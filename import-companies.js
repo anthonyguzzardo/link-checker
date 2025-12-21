@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 const { createClient } = require('@supabase/supabase-js');
+const https = require('https');
 const fs = require('fs');
 
 const SUPABASE_URL = 'https://ampsliudevabkybsbqil.supabase.co';
@@ -12,14 +13,134 @@ function formatSlug(name) {
     return name.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
-async function main() {
-    const inputFile = process.argv[2] || 'companynames.csv';
+function checkUrl(url) {
+    return new Promise((resolve) => {
+        const req = https.get(url, (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => {
+                const noPage = data.includes('"organization":null') ||
+                               data.includes('"jobBoard":null');
+                resolve(noPage ? 'dead' : 'active');
+            });
+        });
 
-    if (!fs.existsSync(inputFile)) {
-        console.log('File not found:', inputFile);
-        console.log('Usage: node import-companies.js <file.csv>');
-        process.exit(1);
+        req.on('error', () => resolve('dead'));
+        req.setTimeout(10000, () => {
+            req.destroy();
+            resolve('dead');
+        });
+    });
+}
+
+async function validateUnchecked() {
+    console.log('\n--- Validating unchecked companies ---\n');
+
+    const { data: companies, error } = await supabase
+        .from('companies')
+        .select('id, name, slug, url')
+        .eq('link_status', 'unchecked')
+        .order('name');
+
+    if (error) {
+        console.error('Fetch error:', error);
+        return;
     }
+
+    if (!companies || companies.length === 0) {
+        console.log('No unchecked companies to validate.');
+        return;
+    }
+
+    console.log(`Found ${companies.length} unchecked companies\n`);
+
+    let activeCount = 0;
+    let deadCount = 0;
+
+    for (let i = 0; i < companies.length; i += 5) {
+        const batch = companies.slice(i, i + 5);
+
+        const results = await Promise.all(
+            batch.map(async (company) => {
+                const linkStatus = await checkUrl(company.url);
+                return { ...company, linkStatus };
+            })
+        );
+
+        for (const result of results) {
+            const { error: updateError } = await supabase
+                .from('companies')
+                .update({ link_status: result.linkStatus })
+                .eq('id', result.id);
+
+            if (updateError) {
+                console.error('Update error for', result.name, updateError);
+            }
+
+            if (result.linkStatus === 'active') {
+                activeCount++;
+                console.log('✓', result.name);
+            } else {
+                deadCount++;
+                console.log('✗', result.name);
+            }
+        }
+
+        console.log(`[${Math.min(i + 5, companies.length)}/${companies.length}]\n`);
+        await new Promise(r => setTimeout(r, 200));
+    }
+
+    console.log('========================================');
+    console.log('ACTIVE:', activeCount);
+    console.log('DEAD:', deadCount);
+    console.log('========================================\n');
+}
+
+async function main() {
+    const CSV_DIR = './csv';
+    let inputFile = process.argv[2];
+
+    // If no file specified, process all CSVs in the csv folder
+    if (!inputFile) {
+        const csvFiles = fs.readdirSync(CSV_DIR).filter(f => f.endsWith('.csv'));
+        if (csvFiles.length === 0) {
+            console.log('No CSV files found in', CSV_DIR);
+            console.log('Drop your company list CSVs into the csv/ folder and run again.');
+            process.exit(1);
+        }
+        console.log(`Found ${csvFiles.length} CSV file(s) in ${CSV_DIR}/\n`);
+
+        // Process each CSV file
+        for (const file of csvFiles) {
+            console.log(`\n=== Processing ${file} ===\n`);
+            await processCSV(`${CSV_DIR}/${file}`);
+        }
+
+        // Validate all unchecked after processing all files
+        await validateUnchecked();
+        console.log('Done! Active companies are now visible in the UI.');
+        return;
+    }
+
+    // If file specified, check csv/ folder first, then current dir
+    if (!fs.existsSync(inputFile)) {
+        const inCsvDir = `${CSV_DIR}/${inputFile}`;
+        if (fs.existsSync(inCsvDir)) {
+            inputFile = inCsvDir;
+        } else {
+            console.log('File not found:', inputFile);
+            console.log('Usage: node import-companies.js [file.csv]');
+            console.log('Or drop CSVs into csv/ folder and run without arguments.');
+            process.exit(1);
+        }
+    }
+
+    await processCSV(inputFile);
+    await validateUnchecked();
+    console.log('Done! Active companies are now visible in the UI.');
+}
+
+async function processCSV(inputFile) {
 
     const text = fs.readFileSync(inputFile, 'utf-8');
     const lines = text.split('\n');
@@ -77,30 +198,28 @@ async function main() {
 
     if (newCompanies.length === 0) {
         console.log('No new companies to import.');
-        process.exit(0);
-    }
+    } else {
+        // Insert in batches of 100
+        const batchSize = 100;
+        let inserted = 0;
 
-    // Insert in batches of 100
-    const batchSize = 100;
-    let inserted = 0;
+        for (let i = 0; i < newCompanies.length; i += batchSize) {
+            const batch = newCompanies.slice(i, i + batchSize);
+            const { error } = await supabase
+                .from('companies')
+                .insert(batch);
 
-    for (let i = 0; i < newCompanies.length; i += batchSize) {
-        const batch = newCompanies.slice(i, i + batchSize);
-        const { error } = await supabase
-            .from('companies')
-            .insert(batch);
-
-        if (error) {
-            console.error('Insert error:', error);
-            console.error('Failed at batch starting index:', i);
-        } else {
-            inserted += batch.length;
-            console.log(`Inserted ${inserted}/${newCompanies.length}`);
+            if (error) {
+                console.error('Insert error:', error);
+                console.error('Failed at batch starting index:', i);
+            } else {
+                inserted += batch.length;
+                console.log(`Inserted ${inserted}/${newCompanies.length}`);
+            }
         }
-    }
 
-    console.log(`\nDone! Imported ${inserted} companies as 'unchecked'.`);
-    console.log('Next step: run "node validate-links.js" to check URLs');
+        console.log(`\nImported ${inserted} companies.`);
+    }
 }
 
 main();
