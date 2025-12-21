@@ -277,6 +277,7 @@
             const { data, error } = await db
                 .from('companies')
                 .select('*')
+                .eq('link_status', 'active')  // Only show validated active links
                 .order('name');
 
             if (error) {
@@ -347,7 +348,8 @@
                         name: c.name,
                         url: c.url,
                         status: 'unvisited',
-                        visited: false
+                        visited: false,
+                        link_status: 'unchecked'  // Needs validation before showing
                     })),
                     { onConflict: 'slug', ignoreDuplicates: false }
                 );

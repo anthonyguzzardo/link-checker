@@ -1,0 +1,25 @@
+{
+  "name": "linkchecker",
+  "version": "1.0.0",
+  "description": "A simple web-based tool for validating and tracking links in bulk.",
+  "main": "import-companies.js",
+  "scripts": {
+    "import": "node import-companies.js",
+    "validate": "node validate-links.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anthonyguzzardo/link-checker.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/anthonyguzzardo/link-checker/issues"
+  },
+  "homepage": "https://github.com/anthonyguzzardo/link-checker#readme",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.89.0"
+  }
+}

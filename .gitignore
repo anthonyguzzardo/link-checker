@@ -1,5 +1,9 @@
 # ENV Vals
+
+node_modules/
+
 config.json
+
 # Personal tracking data - never commit
 ashby-valid.csv
 ashby-no-page.txt
