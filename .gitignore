@@ -1,0 +1,28 @@
+# Personal tracking data - never commit
+ashby-valid.csv
+ashby-no-page.txt
+companynames.csv
+*.csv
+
+# Keep the example/template
+!example-companies.csv
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Backup files
+*.bak
+*.backup
+
+# Readmes
+ASHBY.md
+SUPABASE.md
+
+/deprecated
