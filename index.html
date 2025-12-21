@@ -363,6 +363,63 @@
             return true;
         }
 
+        async function checkUrl(url) {
+            try {
+                const response = await fetch(url);
+                const text = await response.text();
+                const noPage = text.includes('"organization":null') || text.includes('"jobBoard":null');
+                return noPage ? 'dead' : 'active';
+            } catch {
+                return 'dead';
+            }
+        }
+
+        async function validateUnchecked(onProgress) {
+            const { data: companies, error } = await db
+                .from('companies')
+                .select('id, name, slug, url')
+                .eq('link_status', 'unchecked')
+                .order('name');
+
+            if (error || !companies || companies.length === 0) {
+                return { active: 0, dead: 0 };
+            }
+
+            let activeCount = 0;
+            let deadCount = 0;
+
+            // Process in batches of 5
+            for (let i = 0; i < companies.length; i += 5) {
+                const batch = companies.slice(i, i + 5);
+
+                const results = await Promise.all(
+                    batch.map(async (company) => {
+                        const linkStatus = await checkUrl(company.url);
+                        return { ...company, linkStatus };
+                    })
+                );
+
+                for (const result of results) {
+                    await db
+                        .from('companies')
+                        .update({ link_status: result.linkStatus })
+                        .eq('id', result.id);
+
+                    if (result.linkStatus === 'active') activeCount++;
+                    else deadCount++;
+                }
+
+                if (onProgress) {
+                    onProgress(Math.min(i + 5, companies.length), companies.length, activeCount, deadCount);
+                }
+
+                // Small delay for rate limiting
+                await new Promise(r => setTimeout(r, 100));
+            }
+
+            return { active: activeCount, dead: deadCount };
+        }
+
         // ============================================
         // MIGRATION FROM LOCALSTORAGE
         // ============================================
@@ -602,6 +659,17 @@
             const success = await importCompaniesToDB(pendingCSVData);
 
             if (success) {
+                // Validate the newly imported companies
+                this.textContent = 'Validating URLs...';
+                setSyncStatus('Validating...', 'syncing');
+
+                const { active, dead } = await validateUnchecked((current, total, activeCount, deadCount) => {
+                    this.textContent = `Validating ${current}/${total}...`;
+                    setSyncStatus(`✓ ${activeCount} active, ✗ ${deadCount} dead`, 'syncing');
+                });
+
+                setSyncStatus(`Done! ${active} active, ${dead} dead`, 'success');
+
                 // Reload data from database
                 companyData = await loadCompanies();
                 clicked.clear();
