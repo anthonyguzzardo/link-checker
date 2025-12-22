@@ -340,6 +340,94 @@
             min-width: 30px;
         }
 
+        /* LLM Prompt Button */
+        .llm-prompt-btn {
+            width: 100%;
+            margin-top: 24px;
+            background: linear-gradient(90deg, #8b5cf6, #ec4899);
+            font-size: 15px;
+            padding: 14px 24px;
+        }
+        .llm-prompt-btn:hover {
+            background: linear-gradient(90deg, #7c3aed, #db2777);
+        }
+
+        /* Prompt Modal */
+        .prompt-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.85);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+        .prompt-modal.open { display: flex; }
+        .prompt-modal-content {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 12px;
+            padding: 24px;
+            width: 95%;
+            max-width: 800px;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .prompt-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        .prompt-modal-header h2 { margin: 0; font-size: 18px; }
+        .prompt-modal-close {
+            background: #333;
+            border: none;
+            color: #888;
+            font-size: 20px;
+            cursor: pointer;
+            padding: 4px 10px;
+            border-radius: 4px;
+        }
+        .prompt-modal-close:hover { background: #444; color: #fff; }
+        #prompt-text {
+            flex: 1;
+            min-height: 400px;
+            background: #0a0a0a;
+            border: 1px solid #2a2a2a;
+            border-radius: 8px;
+            color: #e0e0e0;
+            font-size: 13px;
+            padding: 16px;
+            resize: none;
+            font-family: inherit;
+            line-height: 1.6;
+        }
+        #prompt-text:focus {
+            outline: none;
+            border-color: #4a9eff;
+        }
+        .prompt-actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 16px;
+            justify-content: flex-end;
+        }
+        .prompt-actions button {
+            padding: 12px 24px;
+            font-size: 14px;
+        }
+        #copy-prompt-btn {
+            background: #22c55e;
+        }
+        #copy-prompt-btn:hover {
+            background: #16a34a;
+        }
+        #copy-prompt-btn.copied {
+            background: #4a9eff;
+        }
+
         /* Notes Popup */
         .notes-popup {
             position: fixed;
@@ -449,6 +537,21 @@
             <div class="chart-container">
                 <div class="chart-title">Applications by Day</div>
                 <div id="stats-chart"></div>
+            </div>
+            <button class="llm-prompt-btn" id="llm-prompt-btn">Generate LLM Analysis Prompt</button>
+        </div>
+    </div>
+
+    <!-- LLM Prompt Modal -->
+    <div class="prompt-modal" id="prompt-modal">
+        <div class="prompt-modal-content">
+            <div class="prompt-modal-header">
+                <h2>LLM Analysis Prompt</h2>
+                <button class="prompt-modal-close" id="prompt-modal-close">✕</button>
+            </div>
+            <textarea id="prompt-text" readonly></textarea>
+            <div class="prompt-actions">
+                <button id="copy-prompt-btn">Copy to Clipboard</button>
             </div>
         </div>
     </div>
@@ -569,6 +672,11 @@
         const notesTextarea = document.getElementById('notes-textarea');
         const notesSave     = document.getElementById('notes-save');
         const notesCancel   = document.getElementById('notes-cancel');
+        const llmPromptBtn  = document.getElementById('llm-prompt-btn');
+        const promptModal   = document.getElementById('prompt-modal');
+        const promptModalClose = document.getElementById('prompt-modal-close');
+        const promptText    = document.getElementById('prompt-text');
+        const copyPromptBtn = document.getElementById('copy-prompt-btn');
 
         // ============================================
         // STATE
@@ -1218,6 +1326,153 @@
 
         statsModal.addEventListener('click', (e) => {
             if (e.target === statsModal) statsModal.classList.remove('open');
+        });
+
+        // ============================================
+        // LLM PROMPT GENERATOR
+        // ============================================
+
+        function generateLLMPrompt() {
+            const now = Date.now();
+            const ghostedThreshold = 14 * 24 * 60 * 60 * 1000; // 14 days
+
+            // Calculate all stats
+            const applied = companyData.filter(c => c.status?.startsWith('applied-'));
+            const interviewing = companyData.filter(c => c.status === 'interviewing');
+            const rejected = companyData.filter(c => c.status === 'rejected');
+            const failedInterview = companyData.filter(c => c.status === 'failed-interview');
+            const passed = companyData.filter(c => c.status === 'passed');
+
+            // Breakdown by application method
+            const byMethod = {
+                ashby: applied.filter(c => c.status === 'applied-ashby').length,
+                linkedin: applied.filter(c => c.status === 'applied-linkedin').length,
+                yc: applied.filter(c => c.status === 'applied-yc').length,
+                email: applied.filter(c => c.status === 'applied-email').length,
+                website: applied.filter(c => c.status === 'applied-website').length,
+            };
+
+            // Calculate ghosted (applied > 14 days ago, still in applied-* status)
+            const ghosted = applied.filter(c => {
+                if (!c.applied_at) return false;
+                const appliedTime = new Date(c.applied_at).getTime();
+                const daysSince = now - appliedTime;
+                return daysSince > ghostedThreshold;
+            });
+
+            // Response stats
+            const responseCount = interviewing.length + rejected.length + failedInterview.length + passed.length;
+            const responseRate = applied.length > 0 ? Math.round((responseCount / applied.length) * 100) : 0;
+
+            // Date range
+            const appliedDates = applied
+                .filter(c => c.applied_at)
+                .map(c => new Date(c.applied_at))
+                .sort((a, b) => a - b);
+
+            const startDate = appliedDates[0];
+            const endDate = appliedDates[appliedDates.length - 1];
+            const weeksSince = startDate ? Math.ceil((now - startDate.getTime()) / (7 * 24 * 60 * 60 * 1000)) : 0;
+            const appsPerWeek = weeksSince > 0 ? Math.round(applied.length / weeksSince) : applied.length;
+
+            // Collect notes/feedback
+            const companiesWithNotes = companyData.filter(c => c.notes && c.notes.trim());
+
+            // Format date helper
+            const formatDate = (date) => date ? date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'N/A';
+
+            // Build the prompt
+            let prompt = `I'm Anthony Guzzardo, a full-stack software engineer and founder of Mr. Fox, LLC based in Chicago. I graduated from DePaul University with a CS degree in 2023. I've shipped a live iOS app called Rangley (40 active users on the App Store) and I'm currently building a $36,000 marketplace platform (MyDailyDeals) for a client. My stack includes Swift, TypeScript, Python, C#, PostgreSQL, and Vapor. I have professional experience at EL3 Tech LLC (financial pipelines, crypto analysis) and Treevah LLC (CI/CD, security). I'm actively job searching and willing to relocate to San Francisco or internationally.
+
+**My Job Search Stats (as of ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}):**
+
+- Job search started: ${formatDate(startDate)}${weeksSince > 0 ? ` (${weeksSince} week${weeksSince !== 1 ? 's' : ''} ago)` : ''}
+- Total applications: ${applied.length}
+- Responses received: ${responseCount} (${responseRate}% response rate)
+- Ghosted (no response after 14 days): ${ghosted.length}
+- Rejected at initial screen: ${rejected.length}
+- Made it to interview stage: ${interviewing.length + failedInterview.length + passed.length}
+- Rejected after interview: ${failedInterview.length}
+- Currently interviewing: ${interviewing.length}
+- Offers/Passed: ${passed.length}
+
+**Application Velocity:**
+
+- Applications per week: ${appsPerWeek}
+- Most recent application: ${formatDate(endDate)}
+
+**Application Method Breakdown:**
+
+- Applied via Ashby: ${byMethod.ashby}
+- Applied via LinkedIn: ${byMethod.linkedin}
+- Applied via YC: ${byMethod.yc}
+- Applied via Email: ${byMethod.email}
+- Applied via Company Website: ${byMethod.website}
+`;
+
+            // Add notes/feedback section if there are any
+            if (companiesWithNotes.length > 0) {
+                prompt += `\n**Feedback/Notes Received:**\n\n`;
+                companiesWithNotes.forEach(c => {
+                    const statusLabel = c.status ? c.status.replace(/-/g, ' ').replace(/applied /i, 'Applied - ') : 'Unknown';
+                    prompt += `- ${c.name} (${statusLabel}): "${c.notes}"\n`;
+                });
+            }
+
+            // Add the instructions for the LLM
+            prompt += `
+**Based on this data, I need you to:**
+
+A. **Motivation:** Give me genuine encouragement to keep going. Not generic bullshit — specific to my situation. Acknowledge that this is hard and that my stats aren't a reflection of my ability to ship real products.
+
+B. **Pivot Analysis:** Should I be targeting different types of companies? Different role types? Different geographies? Am I wasting time on certain application methods? Be specific.
+
+C. **Improvement Areas:** What should I actively work on? Is it my resume? My interview skills? My portfolio? The way I'm applying? The volume of applications? Tell me what to fix.
+
+D. **Pattern Recognition:** Look at my stats and tell me anything interesting. Maybe I do better with certain application methods. Maybe my response rate is actually decent but I'm dying at interviews. Find the signal in the noise.
+
+E. **General Advice:** Anything else. Networking strategies, ways to stand out, whether I should cold-email founders, whether my client work and shipped app are being positioned correctly — whatever you think would help.
+
+Be honest. Be specific. Reference my actual numbers. Don't sugarcoat it but don't be a dick either.`;
+
+            return prompt;
+        }
+
+        async function copyToClipboard(text) {
+            try {
+                await navigator.clipboard.writeText(text);
+                return true;
+            } catch (err) {
+                console.error('Copy failed:', err);
+                return false;
+            }
+        }
+
+        llmPromptBtn.addEventListener('click', () => {
+            const prompt = generateLLMPrompt();
+            promptText.value = prompt;
+            statsModal.classList.remove('open');
+            promptModal.classList.add('open');
+        });
+
+        promptModalClose.addEventListener('click', () => {
+            promptModal.classList.remove('open');
+        });
+
+        promptModal.addEventListener('click', (e) => {
+            if (e.target === promptModal) promptModal.classList.remove('open');
+        });
+
+        copyPromptBtn.addEventListener('click', async () => {
+            const success = await copyToClipboard(promptText.value);
+            if (success) {
+                copyPromptBtn.textContent = 'Copied!';
+                copyPromptBtn.classList.add('copied');
+                setTimeout(() => {
+                    copyPromptBtn.textContent = 'Copy to Clipboard';
+                    copyPromptBtn.classList.remove('copied');
+                }, 2000);
+            }
         });
 
         // ============================================
