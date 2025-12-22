@@ -147,8 +147,8 @@
         .grid a.applied-email::after { content: ' ✓ EMAIL'; font-size: 10px; font-weight: 700; }
         .grid a.applied-website { background: #2a1a2a; border-color: #a855f7; color: #c084fc; }
         .grid a.applied-website::after { content: ' ✓ WEBSITE'; font-size: 10px; font-weight: 700; }
-        .grid a.passed { background: #2a1a1a; border-color: #dc2626; color: #f87171; opacity: 0.5; }
-        .grid a.passed::after { content: ' ✗ PASSED'; font-size: 10px; font-weight: 700; }
+        .grid a.skipped { background: #1a1a1a; border-color: #666; color: #888; opacity: 0.5; }
+        .grid a.skipped::after { content: ' — SKIPPED'; font-size: 10px; font-weight: 700; }
         .grid a.not-qualified { background: #2a2a1a; border-color: #ca8a04; color: #facc15; opacity: 0.5; }
         .grid a.not-qualified::after { content: ' ✗ NOT QUALIFIED'; font-size: 10px; font-weight: 700; }
         .grid a.no-jobs { background: #1a1a1a; border-color: #555; color: #666; opacity: 0.4; }
@@ -515,7 +515,7 @@
             <button data-filter="interviewing">Interviewing</button>
             <button data-filter="rejected">Rejected</button>
             <button data-filter="failed-interview">Failed Interview</button>
-            <button data-filter="passed">Passed</button>
+            <button data-filter="skipped">Skipped</button>
             <button data-filter="not-qualified">Not Qualified</button>
             <button data-filter="no-jobs">No Jobs</button>
             <button data-filter="not-in-us">Not in US</button>
@@ -691,7 +691,7 @@
 
         const allStatuses = [
             'applied-ashby', 'applied-linkedin', 'applied-yc', 'applied-email', 'applied-website',
-            'interviewing', 'rejected', 'failed-interview', 'passed', 'not-qualified', 'no-jobs', 'not-in-us'
+            'interviewing', 'rejected', 'failed-interview', 'skipped', 'not-qualified', 'no-jobs', 'not-in-us'
         ];
 
         // ============================================
@@ -709,7 +709,7 @@
             <div data-status="interviewing"     >Interviewing</div>
             <div data-status="rejected"         >X Rejected</div>
             <div data-status="failed-interview" >X Failed Interview</div>
-            <div data-status="passed"           >✗ Passed</div>
+            <div data-status="skipped"          >— Skipped</div>
             <div data-status="not-qualified"    >✗ Not Qualified</div>
             <div data-status="no-jobs"          >— No Jobs</div>
             <div data-status="not-in-us"        >🌍 Not in US</div>
@@ -1227,7 +1227,7 @@
                 'interviewing': 'Interviewing',
                 'rejected': 'Rejected',
                 'failed-interview': 'Failed Interview',
-                'passed': 'Passed',
+                'skipped': 'Skipped',
                 'not-qualified': 'Not Qualified',
                 'no-jobs': 'No Jobs',
                 'not-in-us': 'Not in US'
@@ -1341,7 +1341,7 @@
             const interviewing = companyData.filter(c => c.status === 'interviewing');
             const rejected = companyData.filter(c => c.status === 'rejected');
             const failedInterview = companyData.filter(c => c.status === 'failed-interview');
-            const passed = companyData.filter(c => c.status === 'passed');
+            const skipped = companyData.filter(c => c.status === 'skipped');
 
             // Breakdown by application method
             const byMethod = {
@@ -1360,8 +1360,8 @@
                 return daysSince > ghostedThreshold;
             });
 
-            // Response stats
-            const responseCount = interviewing.length + rejected.length + failedInterview.length + passed.length;
+            // Response stats (skipped doesn't count - that's you passing on them)
+            const responseCount = interviewing.length + rejected.length + failedInterview.length;
             const responseRate = applied.length > 0 ? Math.round((responseCount / applied.length) * 100) : 0;
 
             // Date range
@@ -1391,10 +1391,10 @@
 - Responses received: ${responseCount} (${responseRate}% response rate)
 - Ghosted (no response after 14 days): ${ghosted.length}
 - Rejected at initial screen: ${rejected.length}
-- Made it to interview stage: ${interviewing.length + failedInterview.length + passed.length}
+- Made it to interview stage: ${interviewing.length + failedInterview.length}
 - Rejected after interview: ${failedInterview.length}
 - Currently interviewing: ${interviewing.length}
-- Offers/Passed: ${passed.length}
+- Skipped by me (not interested): ${skipped.length}
 
 **Application Velocity:**
 
