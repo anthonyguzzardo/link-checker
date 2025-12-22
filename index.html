@@ -99,10 +99,21 @@
             text-align: center;
             transition: all 0.15s ease;
             overflow: hidden;
+        }
+        .grid a .company-name {
+            display: block;
+            overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
         }
         .grid a:hover { background: #252525; border-color: #4a9eff; }
+        .grid a .applied-date {
+            display: block;
+            font-size: 10px;
+            color: #666;
+            margin-top: 4px;
+            font-weight: 400;
+        }
         .grid a.clicked {
             background: #0d2a1a;
             border-color: #166534;
@@ -212,6 +223,106 @@
             font-size: 12px;
         }
         .logout-btn:hover { background: #444; }
+        .stats-btn { background: #8b5cf6; }
+        .stats-btn:hover { background: #7c3aed; }
+
+        /* Stats Modal */
+        .stats-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.8);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 9998;
+        }
+        .stats-modal.open { display: flex; }
+        .stats-modal-content {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 12px;
+            padding: 30px;
+            width: 90%;
+            max-width: 700px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .stats-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+        .stats-modal-header h2 { margin: 0; font-size: 20px; }
+        .stats-modal-close {
+            background: #333;
+            border: none;
+            color: #888;
+            font-size: 20px;
+            cursor: pointer;
+            padding: 4px 10px;
+            border-radius: 4px;
+        }
+        .stats-modal-close:hover { background: #444; color: #fff; }
+        .stats-summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 12px;
+            margin-bottom: 30px;
+        }
+        .stats-summary-item {
+            background: #222;
+            padding: 16px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .stats-summary-item .number {
+            font-size: 28px;
+            font-weight: 700;
+            color: #4a9eff;
+        }
+        .stats-summary-item .label {
+            font-size: 11px;
+            color: #666;
+            margin-top: 4px;
+        }
+        .chart-container { margin-top: 20px; }
+        .chart-title {
+            font-size: 14px;
+            color: #888;
+            margin-bottom: 16px;
+        }
+        .chart-bar-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+            gap: 12px;
+        }
+        .chart-bar-label {
+            width: 80px;
+            font-size: 12px;
+            color: #888;
+            text-align: right;
+        }
+        .chart-bar-track {
+            flex: 1;
+            height: 24px;
+            background: #222;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .chart-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4a9eff, #8b5cf6);
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding-right: 8px;
+            font-size: 11px;
+            font-weight: 600;
+            min-width: 30px;
+        }
     </style>
 </head>
 <body>
@@ -231,6 +342,7 @@
         <input type="file" id="csv-file" accept=".csv,.txt" title="Import companies from CSV">
         <button id="import-csv" class="import-btn">Import CSV to DB</button>
         <input type="text" id="search" placeholder="Search companies...">
+        <button id="stats-btn" class="stats-btn">📊 Stats</button>
         <button id="export" class="export-btn">Export CSV</button>
         <button id="clear" class="clear-btn">Clear All Statuses</button>
         <button id="logout" class="logout-btn">Logout</button>
@@ -256,6 +368,21 @@
 
     <div class="grid" id="grid" style="display: none;">
         <div class="loading">Connecting to database...</div>
+    </div>
+
+    <!-- Stats Modal -->
+    <div class="stats-modal" id="stats-modal">
+        <div class="stats-modal-content">
+            <div class="stats-modal-header">
+                <h2>Application Stats</h2>
+                <button class="stats-modal-close" id="stats-modal-close">✕</button>
+            </div>
+            <div class="stats-summary" id="stats-summary"></div>
+            <div class="chart-container">
+                <div class="chart-title">Applications by Day</div>
+                <div id="stats-chart"></div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -357,6 +484,11 @@
         const totalCount    = document.getElementById('total-count');
         const syncStatus    = document.getElementById('sync-status');
         const filterBtns    = document.querySelectorAll('.filters button');
+        const statsBtn      = document.getElementById('stats-btn');
+        const statsModal    = document.getElementById('stats-modal');
+        const statsModalClose = document.getElementById('stats-modal-close');
+        const statsSummary  = document.getElementById('stats-summary');
+        const statsChart    = document.getElementById('stats-chart');
 
         // ============================================
         // STATE
@@ -429,9 +561,13 @@
 
         async function saveStatus(slug, status, visited = true) {
             setSyncStatus('Saving...', 'syncing');
+            const updates = { status, visited };
+            if (status.startsWith('applied-')) {
+                updates.applied_at = new Date().toISOString();
+            }
             const { error } = await db
                 .from('companies')
-                .update({ status, visited })
+                .update(updates)
                 .eq('slug', slug);
 
             if (error) {
@@ -692,8 +828,19 @@
                 const link = document.createElement('a');
                 link.href = company.url;
                 link.target = '_blank';
-                link.textContent = company.name;
                 link.dataset.formatted = company.slug;
+
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'company-name';
+                nameSpan.textContent = company.name;
+                link.appendChild(nameSpan);
+
+                if (company.applied_at) {
+                    const dateSpan = document.createElement('span');
+                    dateSpan.className = 'applied-date';
+                    dateSpan.textContent = new Date(company.applied_at).toLocaleDateString();
+                    link.appendChild(dateSpan);
+                }
 
                 if (company.visited) {
                     link.classList.add('clicked');
@@ -758,11 +905,24 @@
             if (status === 'clear') {
                 delete statuses[formatted];
                 clicked.delete(formatted);
+                // Remove any existing date span
+                const existingDate = currentContextLink.querySelector('.applied-date');
+                if (existingDate) existingDate.remove();
                 await saveStatus(formatted, 'unvisited', false);
             } else {
                 statuses[formatted] = status;
                 currentContextLink.classList.add(status);
                 clicked.add(formatted);
+                // Add or update date span for applied statuses
+                if (status.startsWith('applied-')) {
+                    let dateSpan = currentContextLink.querySelector('.applied-date');
+                    if (!dateSpan) {
+                        dateSpan = document.createElement('span');
+                        dateSpan.className = 'applied-date';
+                        currentContextLink.appendChild(dateSpan);
+                    }
+                    dateSpan.textContent = new Date().toLocaleDateString();
+                }
                 await saveStatus(formatted, status, true);
             }
 
@@ -870,6 +1030,84 @@
             a.href = URL.createObjectURL(blob);
             a.download = 'ashby-tracker-' + new Date().toISOString().split('T')[0] + '.csv';
             a.click();
+        });
+
+        // ============================================
+        // STATS MODAL
+        // ============================================
+
+        function renderStats() {
+            // Calculate summary stats
+            const applied = companyData.filter(c => c.status?.startsWith('applied-'));
+            const interviewing = companyData.filter(c => c.status === 'interviewing');
+            const passed = companyData.filter(c => c.status === 'passed');
+            const rejected = companyData.filter(c => ['not-qualified', 'failed-interview'].includes(c.status));
+
+            statsSummary.innerHTML = `
+                <div class="stats-summary-item">
+                    <div class="number">${applied.length}</div>
+                    <div class="label">Applied</div>
+                </div>
+                <div class="stats-summary-item">
+                    <div class="number">${interviewing.length}</div>
+                    <div class="label">Interviewing</div>
+                </div>
+                <div class="stats-summary-item">
+                    <div class="number">${passed.length}</div>
+                    <div class="label">Passed</div>
+                </div>
+                <div class="stats-summary-item">
+                    <div class="number">${rejected.length}</div>
+                    <div class="label">Rejected</div>
+                </div>
+            `;
+
+            // Group applications by day
+            const byDay = {};
+            applied.forEach(c => {
+                if (c.applied_at) {
+                    const day = new Date(c.applied_at).toLocaleDateString();
+                    byDay[day] = (byDay[day] || 0) + 1;
+                }
+            });
+
+            // Sort by date and get last 14 days max
+            const sortedDays = Object.entries(byDay)
+                .sort((a, b) => new Date(a[0]) - new Date(b[0]))
+                .slice(-14);
+
+            if (sortedDays.length === 0) {
+                statsChart.innerHTML = '<div style="color: #666; text-align: center; padding: 20px;">No application dates recorded yet</div>';
+                return;
+            }
+
+            const maxCount = Math.max(...sortedDays.map(d => d[1]));
+
+            statsChart.innerHTML = sortedDays.map(([day, count]) => {
+                const pct = (count / maxCount) * 100;
+                const shortDay = new Date(day).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                return `
+                    <div class="chart-bar-row">
+                        <div class="chart-bar-label">${shortDay}</div>
+                        <div class="chart-bar-track">
+                            <div class="chart-bar-fill" style="width: ${pct}%">${count}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        statsBtn.addEventListener('click', () => {
+            renderStats();
+            statsModal.classList.add('open');
+        });
+
+        statsModalClose.addEventListener('click', () => {
+            statsModal.classList.remove('open');
+        });
+
+        statsModal.addEventListener('click', (e) => {
+            if (e.target === statsModal) statsModal.classList.remove('open');
         });
 
         // ============================================
