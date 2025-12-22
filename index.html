@@ -116,12 +116,18 @@
         }
         .grid a .note-indicator {
             position: absolute;
-            top: 6px;
-            right: 6px;
-            width: 8px;
-            height: 8px;
+            top: 4px;
+            right: 4px;
+            width: 10px;
+            height: 10px;
             background: #f59e0b;
             border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 0 4px transparent;
+        }
+        .grid a .note-indicator:hover {
+            background: #fbbf24;
+            box-shadow: 0 0 0 4px rgba(251, 191, 36, 0.2);
         }
         .grid a { position: relative; }
         .grid a.clicked {
@@ -170,8 +176,6 @@
         .context-menu div.clear-status { border-top: 1px solid #444; margin-top: 6px; padding-top: 12px; color: #888; }
         .context-menu div.close-menu { color: #666; font-size: 12px; text-align: center; }
         .empty { color: #444; text-align: center; padding: 60px 20px; font-size: 14px; }
-        .clear-btn { background: #333; margin-left: 10px; }
-        .clear-btn:hover { background: #444; }
         .export-btn { background: #22c55e; }
         .export-btn:hover { background: #16a34a; }
         .import-btn { background: #f59e0b; }
@@ -339,39 +343,54 @@
         /* Notes Popup */
         .notes-popup {
             position: fixed;
-            background: #222;
-            border: 1px solid #444;
-            border-radius: 8px;
-            padding: 12px;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 10px;
+            padding: 16px;
             z-index: 1001;
             width: 280px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
             display: none;
         }
         .notes-popup textarea {
             width: 100%;
             height: 80px;
-            background: #111;
-            border: 1px solid #333;
-            border-radius: 4px;
+            background: #0a0a0a;
+            border: 1px solid #2a2a2a;
+            border-radius: 6px;
             color: #fff;
             font-size: 13px;
-            padding: 8px;
+            padding: 10px 12px;
             resize: none;
             font-family: inherit;
+            line-height: 1.4;
         }
-        .notes-popup textarea:focus { outline: none; border-color: #4a9eff; }
+        .notes-popup textarea:focus {
+            outline: none;
+            border-color: #4a9eff;
+            background: #111;
+        }
+        .notes-popup textarea::placeholder { color: #555; }
         .notes-popup-btns {
             display: flex;
             gap: 8px;
-            margin-top: 8px;
+            margin-top: 12px;
             justify-content: flex-end;
         }
         .notes-popup-btns button {
-            padding: 6px 12px;
+            padding: 8px 16px;
             font-size: 12px;
+            font-weight: 500;
+            border-radius: 6px;
         }
-        .notes-popup-btns .cancel-btn { background: #333; }
+        .notes-popup-btns .cancel-btn {
+            background: #2a2a2a;
+            color: #888;
+        }
+        .notes-popup-btns .cancel-btn:hover {
+            background: #333;
+            color: #fff;
+        }
     </style>
 </head>
 <body>
@@ -393,7 +412,6 @@
         <input type="text" id="search" placeholder="Search companies...">
         <button id="stats-btn" class="stats-btn">Stats</button>
         <button id="export" class="export-btn">Export CSV</button>
-        <button id="clear" class="clear-btn">Clear All Statuses</button>
         <button id="logout" class="logout-btn">Logout</button>
         <div class="stats">
             Visited: <span id="clicked-count">0</span> |
@@ -534,7 +552,6 @@
         // ============================================
         const csvFile       = document.getElementById('csv-file');
         const importBtn     = document.getElementById('import-csv');
-        const clearBtn      = document.getElementById('clear');
         const exportBtn     = document.getElementById('export');
         const searchInput   = document.getElementById('search');
         const grid          = document.getElementById('grid');
@@ -928,8 +945,8 @@
                 if (company.notes) {
                     const noteIndicator = document.createElement('span');
                     noteIndicator.className = 'note-indicator';
-                    noteIndicator.title = company.notes;
                     link.appendChild(noteIndicator);
+                    link.title = company.notes;
                     notes[company.slug] = company.notes;
                 }
 
@@ -1087,24 +1104,6 @@
             this.textContent = 'Import CSV to DB';
         });
 
-        clearBtn.addEventListener('click', async function() {
-            if (confirm('Clear ALL statuses for ALL companies? This cannot be undone.')) {
-                this.disabled = true;
-                const success = await clearAllStatuses();
-                if (success) {
-                    clicked.clear();
-                    statuses = {};
-                    document.querySelectorAll('.grid a').forEach(a => {
-                        allStatuses.forEach(s => a.classList.remove(s));
-                        a.classList.remove('clicked');
-                    });
-                    updateStats();
-                    applyFilters();
-                }
-                this.disabled = false;
-            }
-        });
-
         exportBtn.addEventListener('click', function() {
             const links = grid.querySelectorAll('a');
             if (links.length === 0) { alert('No companies to export'); return; }
@@ -1245,9 +1244,10 @@
                             indicator.className = 'note-indicator';
                             link.appendChild(indicator);
                         }
-                        indicator.title = note;
-                    } else if (indicator) {
-                        indicator.remove();
+                        link.title = note;
+                    } else {
+                        if (indicator) indicator.remove();
+                        link.title = '';
                     }
                 }
             }
