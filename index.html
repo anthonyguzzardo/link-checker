@@ -149,8 +149,10 @@
         .grid a.no-jobs::after { content: ' — NO JOBS'; font-size: 10px; font-weight: 700; }
         .grid a.interviewing { background: #1a2e1a; border-color: #22c55e; color: #4ade80; }
         .grid a.interviewing::after { content: ' ★ INTERVIEWING'; font-size: 10px; font-weight: 700; }
+        .grid a.rejected { background: #2a1a1a; border-color: #ef4444; color: #f87171; opacity: 0.5; }
+        .grid a.rejected::after { content: ' X REJECTED'; font-size: 10px; font-weight: 700; }
         .grid a.failed-interview { background: #2a1a2a; border-color: #9333ea; color: #a855f7; opacity: 0.5; }
-        .grid a.failed-interview::after { content: ' ✗ FAILED INTERVIEW'; font-size: 10px; font-weight: 700; }
+        .grid a.failed-interview::after { content: ' X FAILED INTERVIEW'; font-size: 10px; font-weight: 700; }
         .grid a.not-in-us { background: #1a1a1a; border-color: #065f46; color: #34d399; opacity: 0.4; }
         .grid a.not-in-us::after { content: ' 🌍 NOT IN US'; font-size: 10px; font-weight: 700; }
         .context-menu {
@@ -405,6 +407,7 @@
             <button data-filter="clicked">Visited</button>
             <button data-filter="applied">Applied (All)</button>
             <button data-filter="interviewing">Interviewing</button>
+            <button data-filter="rejected">Rejected</button>
             <button data-filter="failed-interview">Failed Interview</button>
             <button data-filter="passed">Passed</button>
             <button data-filter="not-qualified">Not Qualified</button>
@@ -563,7 +566,7 @@
 
         const allStatuses = [
             'applied-ashby', 'applied-linkedin', 'applied-yc', 'applied-email', 'applied-website',
-            'interviewing', 'failed-interview', 'passed', 'not-qualified', 'no-jobs', 'not-in-us'
+            'interviewing', 'rejected', 'failed-interview', 'passed', 'not-qualified', 'no-jobs', 'not-in-us'
         ];
 
         // ============================================
@@ -573,19 +576,20 @@
         contextMenu.className = 'context-menu';
         contextMenu.style.display = 'none';
         contextMenu.innerHTML = `
-            <div data-status="applied-ashby">✓ Applied - Ashby</div>
-            <div data-status="applied-linkedin">✓ Applied - LinkedIn</div>
-            <div data-status="applied-yc">✓ Applied - YC</div>
-            <div data-status="applied-email">✓ Applied - Email</div>
-            <div data-status="applied-website">✓ Applied - Website</div>
-            <div data-status="interviewing">★ Interviewing</div>
-            <div data-status="failed-interview">✗ Failed Interview</div>
-            <div data-status="passed">✗ Passed</div>
-            <div data-status="not-qualified">✗ Not Qualified</div>
-            <div data-status="no-jobs">— No Jobs</div>
-            <div data-status="not-in-us">🌍 Not in US</div>
+            <div data-status="applied-ashby"    >✓ Applied - Ashby</div>
+            <div data-status="applied-linkedin" >✓ Applied - LinkedIn</div>
+            <div data-status="applied-yc"       >✓ Applied - YC</div>
+            <div data-status="applied-email"    >✓ Applied - Email</div>
+            <div data-status="applied-website"  >✓ Applied - Website</div>
+            <div data-status="interviewing"     >Interviewing</div>
+            <div data-status="rejected"         >X Rejected</div>
+            <div data-status="failed-interview" >X Failed Interview</div>
+            <div data-status="passed"           >✗ Passed</div>
+            <div data-status="not-qualified"    >✗ Not Qualified</div>
+            <div data-status="no-jobs"          >— No Jobs</div>
+            <div data-status="not-in-us"        >🌍 Not in US</div>
             <div class="clear-status" data-status="clear">Clear Status</div>
-            <div data-action="note" style="border-top: 1px solid #444; margin-top: 6px; padding-top: 12px;">📝 Add Note</div>
+            <div data-action="note" style="border-top: 1px solid #444; margin-top: 6px; padding-top: 12px;">Add Note</div>
             <div class="close-menu" data-status="close">✕ Close</div>
         `;
         document.body.appendChild(contextMenu);
@@ -983,6 +987,7 @@
         contextMenu.addEventListener('click', async function(e) {
             const action = e.target.dataset.action;
             if (action === 'note' && currentContextLink) {
+                e.stopPropagation();
                 const slug = currentContextLink.dataset.formatted;
                 currentNoteSlug = slug;
                 notesTextarea.value = notes[slug] || '';
@@ -1111,6 +1116,7 @@
                 'applied-email': 'Applied - Email',
                 'applied-website': 'Applied - Website',
                 'interviewing': 'Interviewing',
+                'rejected': 'Rejected',
                 'failed-interview': 'Failed Interview',
                 'passed': 'Passed',
                 'not-qualified': 'Not Qualified',
@@ -1141,7 +1147,7 @@
             // Calculate summary stats
             const applied = companyData.filter(c => c.status?.startsWith('applied-'));
             const interviewing = companyData.filter(c => c.status === 'interviewing');
-            const rejected = companyData.filter(c => c.status === 'failed-interview');
+            const rejected = companyData.filter(c => c.status === 'rejected' || c.status === 'failed-interview');
 
             const responseCount = interviewing.length + rejected.length;
             const responseRate = applied.length > 0 ? Math.round((responseCount / applied.length) * 100) : 0;
