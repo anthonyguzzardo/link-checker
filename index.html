@@ -159,16 +159,81 @@
         .sync-status.syncing { color: #4a9eff; }
         .sync-status.error { color: #f87171; }
         .sync-status.success { color: #4ade80; }
+
+        /* Auth styles */
+        .auth-overlay {
+            position: fixed;
+            inset: 0;
+            background: #0a0a0a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+        .auth-box {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 12px;
+            padding: 40px;
+            width: 100%;
+            max-width: 360px;
+        }
+        .auth-box h2 {
+            margin: 0 0 24px 0;
+            font-size: 20px;
+            text-align: center;
+        }
+        .auth-box input {
+            width: 100%;
+            padding: 12px 16px;
+            font-size: 14px;
+            border: 2px solid #333;
+            border-radius: 6px;
+            background: #111;
+            color: #fff;
+            outline: none;
+            margin-bottom: 12px;
+        }
+        .auth-box input:focus { border-color: #4a9eff; }
+        .auth-box button {
+            width: 100%;
+            padding: 12px;
+            margin-top: 8px;
+        }
+        .auth-error {
+            color: #f87171;
+            font-size: 13px;
+            text-align: center;
+            margin-top: 12px;
+        }
+        .logout-btn {
+            background: #333;
+            padding: 8px 16px;
+            font-size: 12px;
+        }
+        .logout-btn:hover { background: #444; }
     </style>
 </head>
 <body>
-    <div class="header">
+    <!-- Auth Overlay -->
+    <div class="auth-overlay" id="auth-overlay">
+        <div class="auth-box">
+            <h2>Login Required</h2>
+            <input type="email" id="auth-email" placeholder="Email">
+            <input type="password" id="auth-password" placeholder="Password">
+            <button id="auth-submit">Login</button>
+            <div class="auth-error" id="auth-error"></div>
+        </div>
+    </div>
+
+    <div class="header" id="main-header" style="display: none;">
         <h1>Link Checker ✓</h1>
         <input type="file" id="csv-file" accept=".csv,.txt" title="Import companies from CSV">
         <button id="import-csv" class="import-btn">Import CSV to DB</button>
         <input type="text" id="search" placeholder="Search companies...">
         <button id="export" class="export-btn">Export CSV</button>
         <button id="clear" class="clear-btn">Clear All Statuses</button>
+        <button id="logout" class="logout-btn">Logout</button>
         <div class="stats">
             Visited: <span id="clicked-count">0</span> |
             Applied: <span id="applied-count">0</span> |
@@ -189,7 +254,7 @@
         </div>
     </div>
 
-    <div class="grid" id="grid">
+    <div class="grid" id="grid" style="display: none;">
         <div class="loading">Connecting to database...</div>
     </div>
 
@@ -204,6 +269,79 @@
         // Initialize Supabase client
         const { createClient } = supabase;
         const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // ============================================
+        // AUTHENTICATION
+        // ============================================
+        const authOverlay = document.getElementById('auth-overlay');
+        const authEmail = document.getElementById('auth-email');
+        const authPassword = document.getElementById('auth-password');
+        const authSubmit = document.getElementById('auth-submit');
+        const authError = document.getElementById('auth-error');
+        const mainHeader = document.getElementById('main-header');
+        const logoutBtn = document.getElementById('logout');
+
+        let appInitialized = false;
+        function showApp() {
+            authOverlay.style.display = 'none';
+            mainHeader.style.display = 'flex';
+            document.getElementById('grid').style.display = 'grid';
+            if (!appInitialized) {
+                appInitialized = true;
+                init(); // Initialize the app after login
+            }
+        }
+
+        function showLogin() {
+            authOverlay.style.display = 'flex';
+            mainHeader.style.display = 'none';
+            document.getElementById('grid').style.display = 'none';
+        }
+
+        // Check for existing session on load
+        db.auth.getSession().then(({ data: { session } }) => {
+            if (session) {
+                showApp();
+            } else {
+                showLogin();
+            }
+        });
+
+        // Listen for auth changes
+        db.auth.onAuthStateChange((event, session) => {
+            if (session) {
+                showApp();
+            } else {
+                showLogin();
+            }
+        });
+
+        // Login handler
+        authSubmit.addEventListener('click', async () => {
+            authError.textContent = '';
+            const email = authEmail.value.trim();
+            const password = authPassword.value;
+
+            if (!email || !password) {
+                authError.textContent = 'Please enter email and password';
+                return;
+            }
+
+            const { error } = await db.auth.signInWithPassword({ email, password });
+            if (error) {
+                authError.textContent = error.message;
+            }
+        });
+
+        // Enter key to submit
+        authPassword.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') authSubmit.click();
+        });
+
+        // Logout handler
+        logoutBtn.addEventListener('click', async () => {
+            await db.auth.signOut();
+        });
 
         // ============================================
         // DOM ELEMENTS
@@ -786,8 +924,7 @@
             }
         }
 
-        // Start the app
-        init();
+        // App is started by showApp() after successful login
     </script>
 </body>
 </html>
