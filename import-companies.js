@@ -9,28 +9,88 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// Format slug: collapsed alphanumeric, no hyphens (Ashby's primary pattern)
 function formatSlug(name) {
-    return name.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    return name
+        .toLowerCase()
+        .replace(/\b(inc|llc|ltd|corp|company)\b/g, '')
+        .replace(/[^a-z0-9]/g, '')
+        .trim();
 }
 
-function checkUrl(url) {
+// Get slug variants in Ashby's preference order:
+// 1. Fully collapsed → 2. First token → 3. First+second tokens → 4. Hyphenated (fallback)
+function getSlugVariants(name) {
+    const variants = [];
+    const cleaned = name
+        .toLowerCase()
+        .replace(/\b(inc|llc|ltd|corp|company)\b/g, '')
+        .trim();
+
+    // 1. Fully collapsed: "Public Cloud Group" → "publiccloudgroup"
+    const collapsed = cleaned.replace(/[^a-z0-9]/g, '');
+    if (collapsed) variants.push(collapsed);
+
+    // Split into tokens for partial matches
+    const tokens = cleaned.split(/[\s.-]+/).filter(Boolean);
+
+    // 2. First token only: "Character.AI" → "character"
+    if (tokens.length >= 1) variants.push(tokens[0]);
+
+    // 3. First + second tokens collapsed: "Public Cloud Group" → "publiccloud"
+    if (tokens.length >= 2) variants.push(tokens[0] + tokens[1]);
+
+    // 4. Hyphenated form (last resort): "Skydropx - Frenet" → "skydropx-frenet"
+    const hyphenated = tokens.join('-');
+    if (hyphenated) variants.push(hyphenated);
+
+    // Handle AI suffix fallback: "magicschoolai" → also try "magicschool"
+    return [...new Set(
+        variants.flatMap(v =>
+            v.endsWith('ai') && v.length > 2 ? [v, v.slice(0, -2)] : [v]
+        )
+    )];
+}
+
+function checkSingleUrl(url) {
     return new Promise((resolve) => {
         const req = https.get(url, (res) => {
+            // Non-200 responses are invalid
+            if (res.statusCode !== 200) return resolve(null);
+
             let data = '';
             res.on('data', chunk => data += chunk);
             res.on('end', () => {
+                // Very small responses are likely error pages
+                if (data.length < 500) return resolve(null);
+
                 const noPage = data.includes('"organization":null') ||
                                data.includes('"jobBoard":null');
-                resolve(noPage ? 'dead' : 'active');
+                resolve(noPage ? null : url);
             });
         });
 
-        req.on('error', () => resolve('dead'));
+        req.on('error', () => resolve(null));
         req.setTimeout(10000, () => {
             req.destroy();
-            resolve('dead');
+            resolve(null);
         });
     });
+}
+
+// Try multiple URL variants and return the first working one
+async function checkUrlVariants(name, originalSlug) {
+    const variants = getSlugVariants(name);
+
+    for (const variant of variants) {
+        const url = `https://jobs.ashbyhq.com/${variant}`;
+        const result = await checkSingleUrl(url);
+        if (result) {
+            return { status: 'active', url: result, slug: variant };
+        }
+    }
+
+    return { status: 'dead', url: `https://jobs.ashbyhq.com/${originalSlug}`, slug: originalSlug };
 }
 
 async function validateUnchecked() {
@@ -62,24 +122,33 @@ async function validateUnchecked() {
 
         const results = await Promise.all(
             batch.map(async (company) => {
-                const linkStatus = await checkUrl(company.url);
-                return { ...company, linkStatus };
+                const checkResult = await checkUrlVariants(company.name, company.slug);
+                return { ...company, originalSlug: company.slug, newSlug: checkResult.slug, newUrl: checkResult.url, status: checkResult.status };
             })
         );
 
         for (const result of results) {
+            const updateData = { link_status: result.status };
+
+            // If a different slug/URL worked, update those too
+            if (result.newSlug !== result.originalSlug) {
+                updateData.slug = result.newSlug;
+                updateData.url = result.newUrl;
+            }
+
             const { error: updateError } = await supabase
                 .from('companies')
-                .update({ link_status: result.linkStatus })
+                .update(updateData)
                 .eq('id', result.id);
 
             if (updateError) {
                 console.error('Update error for', result.name, updateError);
             }
 
-            if (result.linkStatus === 'active') {
+            if (result.status === 'active') {
                 activeCount++;
-                console.log('✓', result.name);
+                const note = result.newSlug !== result.originalSlug ? ` (used ${result.newSlug})` : '';
+                console.log('✓', result.name + note);
             } else {
                 deadCount++;
                 console.log('✗', result.name);
@@ -164,7 +233,7 @@ async function processCSV(inputFile) {
 
         const slug = formatSlug(name);
 
-        // Skip duplicates
+        // Skip duplicates - only check the primary slug
         if (seen.has(slug)) continue;
         seen.add(slug);
 
@@ -191,6 +260,7 @@ async function processCSV(inputFile) {
     }
 
     const existingSlugs = new Set(existing?.map(c => c.slug) || []);
+    // Only check the primary slug against existing companies
     const newCompanies = companies.filter(c => !existingSlugs.has(c.slug));
 
     console.log(`Found ${existingSlugs.size} existing companies in DB`);
