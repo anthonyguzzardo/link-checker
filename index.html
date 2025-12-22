@@ -740,7 +740,9 @@
         async function checkUrl(url) {
             try {
                 const response = await fetch(url);
+                if (!response.ok) return 'dead';
                 const text = await response.text();
+                // Only reject if Ashby explicitly says no org/jobBoard
                 const noPage = text.includes('"organization":null') || text.includes('"jobBoard":null');
                 return noPage ? 'dead' : 'active';
             } catch {

@@ -9,287 +9,244 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// Format slug: collapsed alphanumeric, no hyphens (Ashby's primary pattern)
-function formatSlug(name) {
-    return name
+const RETRIES = 3;
+const TIMEOUT_MS = 10000;
+
+// ============================================================================
+// Slug Variants
+// ============================================================================
+
+function generateSlugVariants(name) {
+    const base = name
         .toLowerCase()
-        .replace(/\b(inc|llc|ltd|corp|company)\b/g, '')
-        .replace(/[^a-z0-9]/g, '')
-        .trim();
+        .replace(/\b(inc|llc|ltd|corp|company|co)\b\.?/g, '')
+        .replace(/[^a-z0-9.-]/g, '')
+        .replace(/^[.-]+|[.-]+$/g, '');
+
+    if (!base) return [];
+
+    const variants = new Set();
+    
+    // 1. Base as-is (jerry.ai, gamechanger, finnihealth)
+    variants.add(base);
+    
+    // 2. Collapsed - no dots or hyphens (jerryai)
+    const collapsed = base.replace(/[.-]/g, '');
+    if (collapsed) variants.add(collapsed);
+    
+    // 3. Split into tokens
+    const tokens = base.split(/[.-]+/).filter(Boolean);
+    
+    // 4. First token (jerry, game, finni)
+    if (tokens[0]) variants.add(tokens[0]);
+    
+    // 5. First two tokens collapsed (jerryai)
+    if (tokens.length >= 2) {
+        variants.add(tokens[0] + tokens[1]);
+    }
+    
+    // 6. Hyphenated (jerry-ai, game-changer, finni-health)
+    if (tokens.length >= 2) {
+        variants.add(tokens.join('-'));
+    }
+    
+    // 7. Strip trailing 'ai' (but not .ai TLD, and not if it leaves garbage)
+    for (const v of [...variants]) {
+        if (v.endsWith('ai') && !v.endsWith('.ai') && v.length > 3) {
+            const stripped = v.slice(0, -2).replace(/[.-]+$/, '');
+            if (stripped) variants.add(stripped);
+        }
+    }
+
+    return [...variants];
 }
 
-// Get slug variants in Ashby's preference order:
-// 1. Fully collapsed → 2. First token → 3. First+second tokens → 4. Hyphenated (fallback)
-function getSlugVariants(name) {
-    const variants = [];
-    const cleaned = name
-        .toLowerCase()
-        .replace(/\b(inc|llc|ltd|corp|company)\b/g, '')
-        .trim();
+// ============================================================================
+// HTTP
+// ============================================================================
 
-    // 1. Fully collapsed: "Public Cloud Group" → "publiccloudgroup"
-    const collapsed = cleaned.replace(/[^a-z0-9]/g, '');
-    if (collapsed) variants.push(collapsed);
-
-    // Split into tokens for partial matches
-    const tokens = cleaned.split(/[\s.-]+/).filter(Boolean);
-
-    // 2. First token only: "Character.AI" → "character"
-    if (tokens.length >= 1) variants.push(tokens[0]);
-
-    // 3. First + second tokens collapsed: "Public Cloud Group" → "publiccloud"
-    if (tokens.length >= 2) variants.push(tokens[0] + tokens[1]);
-
-    // 4. Hyphenated form (last resort): "Skydropx - Frenet" → "skydropx-frenet"
-    const hyphenated = tokens.join('-');
-    if (hyphenated) variants.push(hyphenated);
-
-    // Handle AI suffix fallback: "magicschoolai" → also try "magicschool"
-    return [...new Set(
-        variants.flatMap(v =>
-            v.endsWith('ai') && v.length > 2 ? [v, v.slice(0, -2)] : [v]
-        )
-    )];
-}
-
-function checkSingleUrl(url) {
-    return new Promise((resolve) => {
+function httpGet(url) {
+    return new Promise((resolve, reject) => {
         const req = https.get(url, (res) => {
-            // Non-200 responses are invalid
-            if (res.statusCode !== 200) return resolve(null);
-
             let data = '';
             res.on('data', chunk => data += chunk);
-            res.on('end', () => {
-                // Very small responses are likely error pages
-                if (data.length < 500) return resolve(null);
-
-                const noPage = data.includes('"organization":null') ||
-                               data.includes('"jobBoard":null');
-                resolve(noPage ? null : url);
-            });
+            res.on('end', () => resolve({ status: res.statusCode, body: data }));
         });
-
-        req.on('error', () => resolve(null));
-        req.setTimeout(10000, () => {
+        req.on('error', reject);
+        req.setTimeout(TIMEOUT_MS, () => {
             req.destroy();
-            resolve(null);
+            reject(new Error('timeout'));
         });
     });
 }
 
-// Try multiple URL variants and return the first working one
-async function checkUrlVariants(name, originalSlug) {
-    const variants = getSlugVariants(name);
-
-    for (const variant of variants) {
-        const url = `https://jobs.ashbyhq.com/${variant}`;
-        const result = await checkSingleUrl(url);
-        if (result) {
-            return { status: 'active', url: result, slug: variant };
+async function checkUrl(slug) {
+    const url = `https://jobs.ashbyhq.com/${slug}`;
+    
+    for (let attempt = 1; attempt <= RETRIES; attempt++) {
+        try {
+            const res = await httpGet(url);
+            
+            if (res.status !== 200) return false;
+            if (res.body.includes('"organization":null')) return false;
+            if (res.body.includes('"jobBoard":null')) return false;
+            
+            return true;
+        } catch (err) {
+            if (attempt === RETRIES) return false;
+            await sleep(1000 * attempt);
         }
     }
-
-    return { status: 'dead', url: `https://jobs.ashbyhq.com/${originalSlug}`, slug: originalSlug };
+    return false;
 }
 
-async function validateUnchecked() {
-    console.log('\n--- Validating unchecked companies ---\n');
+// ============================================================================
+// Process ONE company - the whole thing
+// ============================================================================
 
-    const { data: companies, error } = await supabase
-        .from('companies')
-        .select('id, name, slug, url')
-        .eq('link_status', 'unchecked')
-        .order('name');
-
-    if (error) {
-        console.error('Fetch error:', error);
-        return;
-    }
-
-    if (!companies || companies.length === 0) {
-        console.log('No unchecked companies to validate.');
-        return;
-    }
-
-    console.log(`Found ${companies.length} unchecked companies\n`);
-
-    let activeCount = 0;
-    let deadCount = 0;
-
-    for (let i = 0; i < companies.length; i += 5) {
-        const batch = companies.slice(i, i + 5);
-
-        const results = await Promise.all(
-            batch.map(async (company) => {
-                const checkResult = await checkUrlVariants(company.name, company.slug);
-                return { ...company, originalSlug: company.slug, newSlug: checkResult.slug, newUrl: checkResult.url, status: checkResult.status };
-            })
-        );
-
-        for (const result of results) {
-            const updateData = { link_status: result.status };
-
-            // If a different slug/URL worked, update those too
-            if (result.newSlug !== result.originalSlug) {
-                updateData.slug = result.newSlug;
-                updateData.url = result.newUrl;
-            }
-
-            const { error: updateError } = await supabase
-                .from('companies')
-                .update(updateData)
-                .eq('id', result.id);
-
-            if (updateError) {
-                console.error('Update error for', result.name, updateError);
-            }
-
-            if (result.status === 'active') {
-                activeCount++;
-                const note = result.newSlug !== result.originalSlug ? ` (used ${result.newSlug})` : '';
-                console.log('✓', result.name + note);
-            } else {
-                deadCount++;
-                console.log('✗', result.name);
-            }
+async function processOneCompany(name, existingSlugs) {
+    const variants = generateSlugVariants(name);
+    
+    console.log(`\n[${name}]`);
+    console.log(`  Variants: ${variants.join(', ')}`);
+    
+    // Try each variant
+    for (const slug of variants) {
+        // Already in DB?
+        if (existingSlugs.has(slug)) {
+            console.log(`  ${slug} → SKIP (already in DB)`);
+            return { status: 'skipped', slug, reason: 'exists' };
         }
+        
+        // Check URL
+        console.log(`  ${slug} → checking...`);
+        const works = await checkUrl(slug);
+        
+        if (works) {
+            console.log(`  ${slug} → FOUND ✓`);
+            
+            // Insert immediately
+            const { error } = await supabase.from('companies').insert({
+                name: name,
+                slug: slug,
+                url: `https://jobs.ashbyhq.com/${slug}`,
+                status: 'unvisited',
+                visited: false,
+                link_status: 'active',
+            });
+            
+            if (error) {
+                console.log(`  INSERT FAILED: ${error.message}`);
+                return { status: 'error', slug, reason: error.message };
+            }
+            
+            console.log(`  INSERTED ✓`);
+            existingSlugs.add(slug); // Track it
+            return { status: 'active', slug };
+        } else {
+            console.log(`  ${slug} → nope`);
+        }
+    }
+    
+    console.log(`  NO WORKING URL ✗`);
+    return { status: 'dead', slug: variants[0] };
+}
 
-        console.log(`[${Math.min(i + 5, companies.length)}/${companies.length}]\n`);
-        await new Promise(r => setTimeout(r, 200));
+// ============================================================================
+// Main
+// ============================================================================
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+function parseCSV(filePath) {
+    const text = fs.readFileSync(filePath, 'utf-8');
+    const names = [];
+
+    for (const line of text.split('\n')) {
+        let name = line.trim();
+        if (!name || name.length < 2) continue;
+        if (/^company(\s*name)?$/i.test(name)) continue;
+
+        // Handle quoted values
+        const quoted = name.match(/^"([^"]+)"/);
+        if (quoted) {
+            name = quoted[1];
+        } else {
+            name = name.split(',')[0];
+        }
+        
+        name = name.replace(/^["']|["']$/g, '').trim();
+        if (name && name.length >= 2) names.push(name);
     }
 
-    console.log('========================================');
-    console.log('ACTIVE:', activeCount);
-    console.log('DEAD:', deadCount);
-    console.log('========================================\n');
+    return names;
 }
 
 async function main() {
     const CSV_DIR = './csv';
-    let inputFile = process.argv[2];
-
-    // If no file specified, process all CSVs in the csv folder
-    if (!inputFile) {
-        const csvFiles = fs.readdirSync(CSV_DIR).filter(f => f.endsWith('.csv'));
-        if (csvFiles.length === 0) {
-            console.log('No CSV files found in', CSV_DIR);
-            console.log('Drop your company list CSVs into the csv/ folder and run again.');
-            process.exit(1);
-        }
-        console.log(`Found ${csvFiles.length} CSV file(s) in ${CSV_DIR}/\n`);
-
-        // Process each CSV file
-        for (const file of csvFiles) {
-            console.log(`\n=== Processing ${file} ===\n`);
-            await processCSV(`${CSV_DIR}/${file}`);
-        }
-
-        // Validate all unchecked after processing all files
-        await validateUnchecked();
-        console.log('Done! Active companies are now visible in the UI.');
-        return;
-    }
-
-    // If file specified, check csv/ folder first, then current dir
-    if (!fs.existsSync(inputFile)) {
-        const inCsvDir = `${CSV_DIR}/${inputFile}`;
-        if (fs.existsSync(inCsvDir)) {
-            inputFile = inCsvDir;
-        } else {
-            console.log('File not found:', inputFile);
-            console.log('Usage: node import-companies.js [file.csv]');
-            console.log('Or drop CSVs into csv/ folder and run without arguments.');
-            process.exit(1);
-        }
-    }
-
-    await processCSV(inputFile);
-    await validateUnchecked();
-    console.log('Done! Active companies are now visible in the UI.');
-}
-
-async function processCSV(inputFile) {
-
-    const text = fs.readFileSync(inputFile, 'utf-8');
-    const lines = text.split('\n');
-
-    // Parse company names
-    const companies = [];
-    const seen = new Set();
-
-    for (const line of lines) {
-        let name = line.trim();
-        if (!name || name.length < 2) continue;
-
-        // Skip header row if present
-        if (name.toLowerCase() === 'company' || name.toLowerCase().includes('company name')) continue;
-
-        // Handle quoted values
-        if (name.startsWith('"') && name.includes('",')) {
-            name = name.match(/^"([^"]+)"/)?.[1] || name;
-        }
-        name = name.replace(/^["']|["']$/g, '').trim();
-
-        const slug = formatSlug(name);
-
-        // Skip duplicates - only check the primary slug
-        if (seen.has(slug)) continue;
-        seen.add(slug);
-
-        companies.push({
-            name: name,
-            slug: slug,
-            url: `https://jobs.ashbyhq.com/${slug}`,
-            status: 'unvisited',
-            visited: false,
-            link_status: 'unchecked'
-        });
-    }
-
-    console.log(`Parsed ${companies.length} unique companies from ${inputFile}`);
-
-    // Check how many already exist in DB
-    const { data: existing, error: fetchError } = await supabase
-        .from('companies')
-        .select('slug');
-
-    if (fetchError) {
-        console.error('Error fetching existing:', fetchError);
+    
+    // Load existing slugs
+    console.log('Loading existing companies from DB...');
+    const { data: existing, error } = await supabase.from('companies').select('slug');
+    if (error) {
+        console.error('DB error:', error.message);
         process.exit(1);
     }
-
     const existingSlugs = new Set(existing?.map(c => c.slug) || []);
-    // Only check the primary slug against existing companies
-    const newCompanies = companies.filter(c => !existingSlugs.has(c.slug));
+    console.log(`Found ${existingSlugs.size} existing companies\n`);
 
-    console.log(`Found ${existingSlugs.size} existing companies in DB`);
-    console.log(`Inserting ${newCompanies.length} new companies...`);
-
-    if (newCompanies.length === 0) {
-        console.log('No new companies to import.');
-    } else {
-        // Insert in batches of 100
-        const batchSize = 100;
-        let inserted = 0;
-
-        for (let i = 0; i < newCompanies.length; i += batchSize) {
-            const batch = newCompanies.slice(i, i + batchSize);
-            const { error } = await supabase
-                .from('companies')
-                .insert(batch);
-
-            if (error) {
-                console.error('Insert error:', error);
-                console.error('Failed at batch starting index:', i);
-            } else {
-                inserted += batch.length;
-                console.log(`Inserted ${inserted}/${newCompanies.length}`);
-            }
+    // Get CSV files
+    let files = process.argv.slice(2);
+    if (files.length === 0) {
+        if (!fs.existsSync(CSV_DIR)) {
+            fs.mkdirSync(CSV_DIR);
+            console.log(`Created ${CSV_DIR}/ - drop CSVs there and run again.`);
+            process.exit(0);
         }
-
-        console.log(`\nImported ${inserted} companies.`);
+        files = fs.readdirSync(CSV_DIR)
+            .filter(f => f.endsWith('.csv'))
+            .map(f => `${CSV_DIR}/${f}`);
     }
+
+    if (files.length === 0) {
+        console.log('No CSV files found.');
+        process.exit(0);
+    }
+
+    // Process each file
+    const totals = { active: 0, dead: 0, skipped: 0, error: 0 };
+
+    for (const file of files) {
+        console.log(`\n${'='.repeat(50)}`);
+        console.log(`FILE: ${file}`);
+        console.log('='.repeat(50));
+
+        const names = parseCSV(file);
+        console.log(`Parsed ${names.length} company names`);
+
+        for (let i = 0; i < names.length; i++) {
+            const name = names[i];
+            console.log(`\n--- ${i + 1}/${names.length} ---`);
+            
+            const result = await processOneCompany(name, existingSlugs);
+            totals[result.status]++;
+            
+            // Small delay between companies
+            await sleep(100);
+        }
+    }
+
+    // Summary
+    console.log(`\n${'='.repeat(50)}`);
+    console.log('DONE');
+    console.log('='.repeat(50));
+    console.log(`  Active:  ${totals.active}`);
+    console.log(`  Dead:    ${totals.dead}`);
+    console.log(`  Skipped: ${totals.skipped}`);
+    console.log(`  Errors:  ${totals.error}`);
 }
 
-main();
+main().catch(err => {
+    console.error('Fatal:', err);
+    process.exit(1);
+});
