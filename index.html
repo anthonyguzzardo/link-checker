@@ -114,6 +114,16 @@
             margin-top: 4px;
             font-weight: 400;
         }
+        .grid a .note-indicator {
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            width: 8px;
+            height: 8px;
+            background: #f59e0b;
+            border-radius: 50%;
+        }
+        .grid a { position: relative; }
         .grid a.clicked {
             background: #0d2a1a;
             border-color: #166534;
@@ -323,6 +333,43 @@
             font-weight: 600;
             min-width: 30px;
         }
+
+        /* Notes Popup */
+        .notes-popup {
+            position: fixed;
+            background: #222;
+            border: 1px solid #444;
+            border-radius: 8px;
+            padding: 12px;
+            z-index: 1001;
+            width: 280px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            display: none;
+        }
+        .notes-popup textarea {
+            width: 100%;
+            height: 80px;
+            background: #111;
+            border: 1px solid #333;
+            border-radius: 4px;
+            color: #fff;
+            font-size: 13px;
+            padding: 8px;
+            resize: none;
+            font-family: inherit;
+        }
+        .notes-popup textarea:focus { outline: none; border-color: #4a9eff; }
+        .notes-popup-btns {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+            justify-content: flex-end;
+        }
+        .notes-popup-btns button {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+        .notes-popup-btns .cancel-btn { background: #333; }
     </style>
 </head>
 <body>
@@ -342,7 +389,7 @@
         <input type="file" id="csv-file" accept=".csv,.txt" title="Import companies from CSV">
         <button id="import-csv" class="import-btn">Import CSV to DB</button>
         <input type="text" id="search" placeholder="Search companies...">
-        <button id="stats-btn" class="stats-btn">📊 Stats</button>
+        <button id="stats-btn" class="stats-btn">Stats</button>
         <button id="export" class="export-btn">Export CSV</button>
         <button id="clear" class="clear-btn">Clear All Statuses</button>
         <button id="logout" class="logout-btn">Logout</button>
@@ -382,6 +429,15 @@
                 <div class="chart-title">Applications by Day</div>
                 <div id="stats-chart"></div>
             </div>
+        </div>
+    </div>
+
+    <!-- Notes Popup -->
+    <div class="notes-popup" id="notes-popup">
+        <textarea id="notes-textarea" placeholder="Add a note..."></textarea>
+        <div class="notes-popup-btns">
+            <button class="cancel-btn" id="notes-cancel">Cancel</button>
+            <button id="notes-save">Save</button>
         </div>
     </div>
 
@@ -489,6 +545,10 @@
         const statsModalClose = document.getElementById('stats-modal-close');
         const statsSummary  = document.getElementById('stats-summary');
         const statsChart    = document.getElementById('stats-chart');
+        const notesPopup    = document.getElementById('notes-popup');
+        const notesTextarea = document.getElementById('notes-textarea');
+        const notesSave     = document.getElementById('notes-save');
+        const notesCancel   = document.getElementById('notes-cancel');
 
         // ============================================
         // STATE
@@ -497,7 +557,9 @@
         let currentFilter       = 'all';
         let clicked             = new Set();
         let statuses            = {};
+        let notes               = {};
         let currentContextLink  = null;
+        let currentNoteSlug     = null;
 
         const allStatuses = [
             'applied-ashby', 'applied-linkedin', 'applied-yc', 'applied-email', 'applied-website',
@@ -523,6 +585,7 @@
             <div data-status="no-jobs">— No Jobs</div>
             <div data-status="not-in-us">🌍 Not in US</div>
             <div class="clear-status" data-status="clear">Clear Status</div>
+            <div data-action="note" style="border-top: 1px solid #444; margin-top: 6px; padding-top: 12px;">📝 Add Note</div>
             <div class="close-menu" data-status="close">✕ Close</div>
         `;
         document.body.appendChild(contextMenu);
@@ -607,6 +670,22 @@
                 return false;
             }
             setSyncStatus('Cleared', 'success');
+            return true;
+        }
+
+        async function saveNote(slug, note) {
+            setSyncStatus('Saving...', 'syncing');
+            const { error } = await db
+                .from('companies')
+                .update({ notes: note })
+                .eq('slug', slug);
+
+            if (error) {
+                console.error('Note error:', error);
+                setSyncStatus('Save failed', 'error');
+                return false;
+            }
+            setSyncStatus('Saved', 'success');
             return true;
         }
 
@@ -842,6 +921,14 @@
                     link.appendChild(dateSpan);
                 }
 
+                if (company.notes) {
+                    const noteIndicator = document.createElement('span');
+                    noteIndicator.className = 'note-indicator';
+                    noteIndicator.title = company.notes;
+                    link.appendChild(noteIndicator);
+                    notes[company.slug] = company.notes;
+                }
+
                 if (company.visited) {
                     link.classList.add('clicked');
                     clicked.add(company.slug);
@@ -894,6 +981,20 @@
         });
 
         contextMenu.addEventListener('click', async function(e) {
+            const action = e.target.dataset.action;
+            if (action === 'note' && currentContextLink) {
+                const slug = currentContextLink.dataset.formatted;
+                currentNoteSlug = slug;
+                notesTextarea.value = notes[slug] || '';
+                notesPopup.style.display = 'block';
+                const rect = currentContextLink.getBoundingClientRect();
+                notesPopup.style.left = Math.min(rect.left, window.innerWidth - 300) + 'px';
+                notesPopup.style.top = Math.min(rect.bottom + 5, window.innerHeight - 150) + 'px';
+                notesTextarea.focus();
+                contextMenu.style.display = 'none';
+                return;
+            }
+
             const status = e.target.dataset.status;
             if (!status || !currentContextLink) return;
             if (status === 'close') { contextMenu.style.display = 'none'; return; }
@@ -1040,8 +1141,10 @@
             // Calculate summary stats
             const applied = companyData.filter(c => c.status?.startsWith('applied-'));
             const interviewing = companyData.filter(c => c.status === 'interviewing');
-            const passed = companyData.filter(c => c.status === 'passed');
-            const rejected = companyData.filter(c => ['not-qualified', 'failed-interview'].includes(c.status));
+            const rejected = companyData.filter(c => c.status === 'failed-interview');
+
+            const responseCount = interviewing.length + rejected.length;
+            const responseRate = applied.length > 0 ? Math.round((responseCount / applied.length) * 100) : 0;
 
             statsSummary.innerHTML = `
                 <div class="stats-summary-item">
@@ -1053,12 +1156,12 @@
                     <div class="label">Interviewing</div>
                 </div>
                 <div class="stats-summary-item">
-                    <div class="number">${passed.length}</div>
-                    <div class="label">Passed</div>
-                </div>
-                <div class="stats-summary-item">
                     <div class="number">${rejected.length}</div>
                     <div class="label">Rejected</div>
+                </div>
+                <div class="stats-summary-item">
+                    <div class="number">${responseRate}%</div>
+                    <div class="label">Response Rate</div>
                 </div>
             `;
 
@@ -1108,6 +1211,50 @@
 
         statsModal.addEventListener('click', (e) => {
             if (e.target === statsModal) statsModal.classList.remove('open');
+        });
+
+        // ============================================
+        // NOTES POPUP
+        // ============================================
+
+        notesCancel.addEventListener('click', () => {
+            notesPopup.style.display = 'none';
+            currentNoteSlug = null;
+        });
+
+        notesSave.addEventListener('click', async () => {
+            if (!currentNoteSlug) return;
+            const note = notesTextarea.value.trim();
+            const success = await saveNote(currentNoteSlug, note);
+
+            if (success) {
+                notes[currentNoteSlug] = note;
+                // Update or add/remove indicator
+                const link = document.querySelector(`a[data-formatted="${currentNoteSlug}"]`);
+                if (link) {
+                    let indicator = link.querySelector('.note-indicator');
+                    if (note) {
+                        if (!indicator) {
+                            indicator = document.createElement('span');
+                            indicator.className = 'note-indicator';
+                            link.appendChild(indicator);
+                        }
+                        indicator.title = note;
+                    } else if (indicator) {
+                        indicator.remove();
+                    }
+                }
+            }
+
+            notesPopup.style.display = 'none';
+            currentNoteSlug = null;
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!notesPopup.contains(e.target) && notesPopup.style.display === 'block') {
+                notesPopup.style.display = 'none';
+                currentNoteSlug = null;
+            }
         });
 
         // ============================================
