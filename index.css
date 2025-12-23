@@ -1,0 +1,865 @@
+/* ===========================================
+   LinkChecker - Main Styles
+   =========================================== */
+
+* { box-sizing: border-box; }
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #0a0a0a;
+    color: #fff;
+    margin: 0;
+    padding: 20px;
+    min-height: 100vh;
+}
+
+/* ===========================================
+   Header & Navigation
+   =========================================== */
+
+.header {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    align-items: center;
+    position: sticky;
+    top: 0;
+    background: #0a0a0a;
+    padding: 15px 0;
+    z-index: 500;
+    border-bottom: 1px solid #222;
+}
+
+.header h1 {
+    font-size: 20px;
+    margin: 0;
+    margin-right: 20px;
+}
+
+.header-controls {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+/* ===========================================
+   Filters
+   =========================================== */
+
+.filters {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+    width: 100%;
+}
+
+.filters button {
+    padding: 6px 12px;
+    font-size: 12px;
+    background: #222;
+    border: 1px solid #333;
+}
+
+.filters button:hover { background: #333; }
+.filters button.active { background: #4a9eff; border-color: #4a9eff; }
+
+/* ===========================================
+   Form Elements
+   =========================================== */
+
+input[type="file"] {
+    padding: 10px;
+    font-size: 13px;
+    border: 2px dashed #333;
+    border-radius: 6px;
+    background: #111;
+    color: #888;
+    cursor: pointer;
+}
+
+input[type="file"]:hover { border-color: #555; }
+
+input[type="text"] {
+    padding: 12px 16px;
+    font-size: 14px;
+    border: 2px solid #333;
+    border-radius: 6px;
+    background: #111;
+    color: #fff;
+    outline: none;
+    width: 200px;
+}
+
+input[type="text"]:focus { border-color: #4a9eff; }
+input[type="text"]::placeholder { color: #555; }
+
+button {
+    padding: 12px 24px;
+    font-size: 14px;
+    border: none;
+    border-radius: 6px;
+    background: #4a9eff;
+    color: #fff;
+    cursor: pointer;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+button:hover { background: #3a8eef; }
+button:disabled { background: #333; cursor: not-allowed; }
+
+/* ===========================================
+   Stats Display
+   =========================================== */
+
+.stats {
+    font-size: 13px;
+    color: #666;
+}
+
+.stats span {
+    color: #4ade80;
+    font-weight: 600;
+}
+
+.stats .valid-count { color: #4a9eff; }
+
+/* ===========================================
+   Company Grid
+   =========================================== */
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 8px;
+}
+
+.grid a {
+    display: block;
+    padding: 14px 12px;
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    border-radius: 6px;
+    color: #fff;
+    text-decoration: none;
+    font-size: 13px;
+    text-align: center;
+    transition: all 0.15s ease;
+    overflow: hidden;
+    position: relative;
+}
+
+.grid a .company-name {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.grid a:hover {
+    background: #252525;
+    border-color: #4a9eff;
+}
+
+.grid a .applied-date {
+    display: block;
+    font-size: 10px;
+    color: #666;
+    margin-top: 4px;
+    font-weight: 400;
+}
+
+.grid a .note-indicator {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 10px;
+    height: 10px;
+    background: #f59e0b;
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 0 0 4px transparent;
+}
+
+.grid a .note-indicator:hover {
+    background: #fbbf24;
+    box-shadow: 0 0 0 4px rgba(251, 191, 36, 0.2);
+}
+
+/* ===========================================
+   Status Styles
+   =========================================== */
+
+.grid a.clicked {
+    background: #0d2a1a;
+    border-color: #166534;
+    color: #4ade80;
+    opacity: 0.6;
+}
+.grid a.clicked::after { content: ' ✓'; }
+
+.grid a.applied-ashby { background: #1a1a2e; border-color: #4a9eff; color: #4a9eff; }
+.grid a.applied-ashby::after { content: ' ✓ ASHBY'; font-size: 10px; font-weight: 700; }
+
+.grid a.applied-linkedin { background: #1a1a2e; border-color: #0a66c2; color: #5094d4; }
+.grid a.applied-linkedin::after { content: ' ✓ LINKEDIN'; font-size: 10px; font-weight: 700; }
+
+.grid a.applied-yc { background: #2a1a0a; border-color: #f26625; color: #f59563; }
+.grid a.applied-yc::after { content: ' ✓ YC'; font-size: 10px; font-weight: 700; }
+
+.grid a.applied-email { background: #1a2a1a; border-color: #22c55e; color: #4ade80; }
+.grid a.applied-email::after { content: ' ✓ EMAIL'; font-size: 10px; font-weight: 700; }
+
+.grid a.applied-website { background: #2a1a2a; border-color: #a855f7; color: #c084fc; }
+.grid a.applied-website::after { content: ' ✓ WEBSITE'; font-size: 10px; font-weight: 700; }
+
+.grid a.applied-lever { background: #1a2a2a; border-color: #14b8a6; color: #2dd4bf; }
+.grid a.applied-lever::after { content: ' ✓ LEVER'; font-size: 10px; font-weight: 700; }
+
+.grid a.applied-gem { background: #2a1a2a; border-color: #e879f9; color: #f0abfc; }
+.grid a.applied-gem::after { content: ' ✓ GEM'; font-size: 10px; font-weight: 700; }
+
+.grid a.skipped { background: #1a1a1a; border-color: #666; color: #888; opacity: 0.5; }
+.grid a.skipped::after { content: ' — SKIPPED'; font-size: 10px; font-weight: 700; }
+
+.grid a.not-qualified { background: #2a2a1a; border-color: #ca8a04; color: #facc15; opacity: 0.5; }
+.grid a.not-qualified::after { content: ' ✗ NOT QUALIFIED'; font-size: 10px; font-weight: 700; }
+
+.grid a.no-jobs { background: #1a1a1a; border-color: #555; color: #666; opacity: 0.4; }
+.grid a.no-jobs::after { content: ' — NO JOBS'; font-size: 10px; font-weight: 700; }
+
+.grid a.not-relevant { background: #1a1a1a; border-color: #444; color: #555; opacity: 0.35; }
+.grid a.not-relevant::after { content: ' — NOT RELEVANT'; font-size: 10px; font-weight: 700; }
+
+.grid a.interviewing { background: #1a2e1a; border-color: #22c55e; color: #4ade80; }
+.grid a.interviewing::after { content: ' ★ INTERVIEWING'; font-size: 10px; font-weight: 700; }
+
+.grid a.rejected { background: #2a1a1a; border-color: #ef4444; color: #f87171; opacity: 0.5; }
+.grid a.rejected::after { content: ' X REJECTED'; font-size: 10px; font-weight: 700; }
+
+.grid a.failed-interview { background: #2a1a2a; border-color: #9333ea; color: #a855f7; opacity: 0.5; }
+.grid a.failed-interview::after { content: ' X FAILED INTERVIEW'; font-size: 10px; font-weight: 700; }
+
+.grid a.not-in-us { background: #1a1a1a; border-color: #065f46; color: #34d399; opacity: 0.4; }
+.grid a.not-in-us::after { content: ' 🌍 NOT IN US'; font-size: 10px; font-weight: 700; }
+
+/* ===========================================
+   Context Menu
+   =========================================== */
+
+.context-menu {
+    position: fixed;
+    background: #222;
+    border: 1px solid #444;
+    border-radius: 6px;
+    padding: 6px 0;
+    z-index: 1000;
+    min-width: 160px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+
+.context-menu div {
+    padding: 10px 16px;
+    cursor: pointer;
+    font-size: 13px;
+    color: #fff;
+}
+
+.context-menu div:hover { background: #333; }
+
+.context-menu div.clear-status {
+    border-top: 1px solid #444;
+    margin-top: 6px;
+    padding-top: 12px;
+    color: #888;
+}
+
+.context-menu div.close-menu {
+    color: #666;
+    font-size: 12px;
+    text-align: center;
+}
+
+/* ===========================================
+   Utility Classes
+   =========================================== */
+
+.empty {
+    color: #444;
+    text-align: center;
+    padding: 60px 20px;
+    font-size: 14px;
+}
+
+.export-btn { background: #22c55e; }
+.export-btn:hover { background: #16a34a; }
+
+.import-btn { background: #f59e0b; }
+.import-btn:hover { background: #d97706; }
+
+.loading {
+    color: #4a9eff;
+    text-align: center;
+    padding: 60px 20px;
+}
+
+.error {
+    color: #f87171;
+    text-align: center;
+    padding: 60px 20px;
+}
+
+.sync-status { font-size: 11px; color: #666; }
+.sync-status.syncing { color: #4a9eff; }
+.sync-status.error { color: #f87171; }
+.sync-status.success { color: #4ade80; }
+
+/* ===========================================
+   Auth Styles
+   =========================================== */
+
+.auth-overlay {
+    position: fixed;
+    inset: 0;
+    background: #0a0a0a;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+}
+
+.auth-box {
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 12px;
+    padding: 40px;
+    width: 100%;
+    max-width: 360px;
+}
+
+.auth-box h2 {
+    margin: 0 0 24px 0;
+    font-size: 20px;
+    text-align: center;
+}
+
+.auth-box input {
+    width: 100%;
+    padding: 12px 16px;
+    font-size: 14px;
+    border: 2px solid #333;
+    border-radius: 6px;
+    background: #111;
+    color: #fff;
+    outline: none;
+    margin-bottom: 12px;
+}
+
+.auth-box input:focus { border-color: #4a9eff; }
+
+.auth-box button {
+    width: 100%;
+    padding: 12px;
+    margin-top: 8px;
+}
+
+.auth-error {
+    color: #f87171;
+    font-size: 13px;
+    text-align: center;
+    margin-top: 12px;
+}
+
+.logout-btn {
+    background: #333;
+    padding: 8px 16px;
+    font-size: 12px;
+}
+.logout-btn:hover { background: #444; }
+
+.stats-btn { background: #8b5cf6; }
+.stats-btn:hover { background: #7c3aed; }
+
+/* ===========================================
+   Stats Modal
+   =========================================== */
+
+.stats-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.8);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 9998;
+}
+
+.stats-modal.open { display: flex; }
+
+.stats-modal-content {
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 12px;
+    padding: 30px;
+    width: 90%;
+    max-width: 700px;
+    max-height: 80vh;
+    overflow-y: auto;
+}
+
+.stats-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+}
+
+.stats-modal-header h2 {
+    margin: 0;
+    font-size: 20px;
+}
+
+.stats-modal-close {
+    background: #333;
+    border: none;
+    color: #888;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 4px 10px;
+    border-radius: 4px;
+}
+
+.stats-modal-close:hover {
+    background: #444;
+    color: #fff;
+}
+
+.stats-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 12px;
+    margin-bottom: 30px;
+}
+
+.stats-summary-item {
+    background: #222;
+    padding: 16px;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.stats-summary-item .number {
+    font-size: 28px;
+    font-weight: 700;
+    color: #4a9eff;
+}
+
+.stats-summary-item .label {
+    font-size: 11px;
+    color: #666;
+    margin-top: 4px;
+}
+
+.chart-container { margin-top: 20px; }
+
+.chart-title {
+    font-size: 14px;
+    color: #888;
+    margin-bottom: 16px;
+}
+
+.chart-bar-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 8px;
+    gap: 12px;
+}
+
+.chart-bar-label {
+    width: 80px;
+    font-size: 12px;
+    color: #888;
+    text-align: right;
+}
+
+.chart-bar-track {
+    flex: 1;
+    height: 24px;
+    background: #222;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.chart-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #4a9eff, #8b5cf6);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-right: 8px;
+    font-size: 11px;
+    font-weight: 600;
+    min-width: 30px;
+}
+
+/* ===========================================
+   LLM Prompt Button & Modal
+   =========================================== */
+
+.llm-prompt-btn {
+    width: 100%;
+    margin-top: 24px;
+    background: linear-gradient(90deg, #8b5cf6, #ec4899);
+    font-size: 15px;
+    padding: 14px 24px;
+}
+
+.llm-prompt-btn:hover {
+    background: linear-gradient(90deg, #7c3aed, #db2777);
+}
+
+.prompt-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.85);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+}
+
+.prompt-modal.open { display: flex; }
+
+.prompt-modal-content {
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 12px;
+    padding: 24px;
+    width: 95%;
+    max-width: 800px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.prompt-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.prompt-modal-header h2 {
+    margin: 0;
+    font-size: 18px;
+}
+
+.prompt-modal-close {
+    background: #333;
+    border: none;
+    color: #888;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 4px 10px;
+    border-radius: 4px;
+}
+
+.prompt-modal-close:hover {
+    background: #444;
+    color: #fff;
+}
+
+#prompt-text {
+    flex: 1;
+    min-height: 400px;
+    background: #0a0a0a;
+    border: 1px solid #2a2a2a;
+    border-radius: 8px;
+    color: #e0e0e0;
+    font-size: 13px;
+    padding: 16px;
+    resize: none;
+    font-family: inherit;
+    line-height: 1.6;
+}
+
+#prompt-text:focus {
+    outline: none;
+    border-color: #4a9eff;
+}
+
+.prompt-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 16px;
+    justify-content: flex-end;
+}
+
+.prompt-actions button {
+    padding: 12px 24px;
+    font-size: 14px;
+}
+
+#copy-prompt-btn { background: #22c55e; }
+#copy-prompt-btn:hover { background: #16a34a; }
+#copy-prompt-btn.copied { background: #4a9eff; }
+
+/* ===========================================
+   Notes Popup
+   =========================================== */
+
+.notes-popup {
+    position: fixed;
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 10px;
+    padding: 16px;
+    z-index: 1001;
+    width: 280px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    display: none;
+}
+
+.notes-popup textarea {
+    width: 100%;
+    height: 80px;
+    background: #0a0a0a;
+    border: 1px solid #2a2a2a;
+    border-radius: 6px;
+    color: #fff;
+    font-size: 13px;
+    padding: 10px 12px;
+    resize: none;
+    font-family: inherit;
+    line-height: 1.4;
+}
+
+.notes-popup textarea:focus {
+    outline: none;
+    border-color: #4a9eff;
+    background: #111;
+}
+
+.notes-popup textarea::placeholder { color: #555; }
+
+.notes-popup-btns {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+    justify-content: flex-end;
+}
+
+.notes-popup-btns button {
+    padding: 8px 16px;
+    font-size: 12px;
+    font-weight: 500;
+    border-radius: 6px;
+}
+
+.notes-popup-btns .cancel-btn {
+    background: #2a2a2a;
+    color: #888;
+}
+
+.notes-popup-btns .cancel-btn:hover {
+    background: #333;
+    color: #fff;
+}
+
+/* ===========================================
+   Mobile Responsive Styles
+   =========================================== */
+
+@media (max-width: 768px) {
+    body {
+        padding: 10px;
+    }
+
+    .header {
+        padding: 10px 0;
+        gap: 10px;
+    }
+
+    .header h1 {
+        font-size: 16px;
+        margin-right: 10px;
+        width: 100%;
+        text-align: center;
+    }
+
+    /* Stack header controls vertically on mobile */
+    .header > input[type="file"],
+    .header > button,
+    .header > input[type="text"] {
+        flex: 1 1 calc(50% - 5px);
+        min-width: 0;
+    }
+
+    input[type="text"] {
+        width: 100%;
+        font-size: 16px; /* Prevents zoom on iOS */
+    }
+
+    input[type="file"] {
+        font-size: 12px;
+        padding: 8px;
+    }
+
+    button {
+        padding: 10px 16px;
+        font-size: 13px;
+    }
+
+    .stats {
+        width: 100%;
+        text-align: center;
+        font-size: 12px;
+        padding: 8px 0;
+        border-top: 1px solid #222;
+        margin-top: 5px;
+    }
+
+    /* Filters - horizontal scroll on mobile */
+    .filters {
+        gap: 6px;
+        margin-top: 8px;
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        padding-bottom: 8px;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .filters button {
+        flex-shrink: 0;
+        padding: 8px 12px;
+        font-size: 11px;
+    }
+
+    /* Grid - 2 columns on mobile */
+    .grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 6px;
+    }
+
+    .grid a {
+        padding: 12px 8px;
+        font-size: 11px;
+    }
+
+    .grid a::after {
+        font-size: 8px !important;
+    }
+
+    .grid a .applied-date {
+        font-size: 9px;
+    }
+
+    /* Context menu */
+    .context-menu {
+        min-width: 200px;
+        max-height: 70vh;
+        overflow-y: auto;
+    }
+
+    .context-menu div {
+        padding: 12px 16px;
+        font-size: 14px;
+    }
+
+    /* Modals - full width on mobile */
+    .stats-modal-content,
+    .prompt-modal-content {
+        width: 100%;
+        max-width: none;
+        max-height: 95vh;
+        border-radius: 12px 12px 0 0;
+        margin-top: auto;
+    }
+
+    .stats-modal-content {
+        padding: 20px;
+    }
+
+    .stats-summary {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+    }
+
+    .stats-summary-item {
+        padding: 12px;
+    }
+
+    .stats-summary-item .number {
+        font-size: 22px;
+    }
+
+    .stats-summary-item .label {
+        font-size: 10px;
+    }
+
+    .chart-bar-label {
+        width: 60px;
+        font-size: 10px;
+    }
+
+    #prompt-text {
+        min-height: 300px;
+        font-size: 12px;
+    }
+
+    .prompt-actions {
+        flex-direction: column;
+    }
+
+    .prompt-actions button {
+        width: 100%;
+    }
+
+    /* Notes popup */
+    .notes-popup {
+        width: calc(100% - 20px);
+        left: 10px !important;
+        right: 10px;
+    }
+
+    /* Auth box */
+    .auth-box {
+        padding: 24px;
+        margin: 10px;
+    }
+
+    .auth-box h2 {
+        font-size: 18px;
+    }
+}
+
+/* Extra small screens */
+@media (max-width: 400px) {
+    .grid {
+        grid-template-columns: 1fr;
+    }
+
+    .header h1 {
+        font-size: 14px;
+    }
+
+    .filters button {
+        padding: 6px 10px;
+        font-size: 10px;
+    }
+
+    .stats-summary {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+/* Tablet tweaks */
+@media (min-width: 769px) and (max-width: 1024px) {
+    .grid {
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    }
+}
