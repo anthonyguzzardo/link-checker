@@ -12,6 +12,28 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const RETRIES = 3;
 const TIMEOUT_MS = 10000;
 
+// Priority order - first match wins
+const BOARDS = [
+    {
+        name: 'ashby',
+        baseUrl: 'https://jobs.ashbyhq.com',
+        // Ashby returns 200 with null org/jobBoard for dead pages
+        isDead: (body) => body.includes('"organization":null') || body.includes('"jobBoard":null'),
+    },
+    {
+        name: 'lever',
+        baseUrl: 'https://jobs.lever.co',
+        // Lever returns 404 for dead pages (need to verify)
+        isDead: (body, status) => status === 404 || body.includes('Page not found'),
+    },
+    {
+        name: 'gem',
+        baseUrl: 'https://jobs.gem.com',
+        // Gem - assuming similar to Lever (need to verify)
+        isDead: (body, status) => status === 404 || body.includes('Page not found') || body.includes('Not Found'),
+    },
+];
+
 // ============================================================================
 // Slug Variants
 // ============================================================================
@@ -27,30 +49,30 @@ function generateSlugVariants(name) {
 
     const variants = new Set();
     
-    // 1. Base as-is (jerry.ai, gamechanger, finnihealth)
+    // 1. Base as-is
     variants.add(base);
     
-    // 2. Collapsed - no dots or hyphens (jerryai)
+    // 2. Collapsed - no dots or hyphens
     const collapsed = base.replace(/[.-]/g, '');
     if (collapsed) variants.add(collapsed);
     
     // 3. Split into tokens
     const tokens = base.split(/[.-]+/).filter(Boolean);
     
-    // 4. First token (jerry, game, finni)
+    // 4. First token
     if (tokens[0]) variants.add(tokens[0]);
     
-    // 5. First two tokens collapsed (jerryai)
+    // 5. First two tokens collapsed
     if (tokens.length >= 2) {
         variants.add(tokens[0] + tokens[1]);
     }
     
-    // 6. Hyphenated (jerry-ai, game-changer, finni-health)
+    // 6. Hyphenated
     if (tokens.length >= 2) {
         variants.add(tokens.join('-'));
     }
     
-    // 7. Strip trailing 'ai' (but not .ai TLD, and not if it leaves garbage)
+    // 7. Strip trailing 'ai' (but not .ai TLD)
     for (const v of [...variants]) {
         if (v.endsWith('ai') && !v.endsWith('.ai') && v.length > 3) {
             const stripped = v.slice(0, -2).replace(/[.-]+$/, '');
@@ -80,16 +102,15 @@ function httpGet(url) {
     });
 }
 
-async function checkUrl(slug) {
-    const url = `https://jobs.ashbyhq.com/${slug}`;
-    
+async function checkUrl(url, isDead) {
     for (let attempt = 1; attempt <= RETRIES; attempt++) {
         try {
             const res = await httpGet(url);
             
-            if (res.status !== 200) return false;
-            if (res.body.includes('"organization":null')) return false;
-            if (res.body.includes('"jobBoard":null')) return false;
+            // Board-specific dead check
+            if (res.status !== 200 || isDead(res.body, res.status)) {
+                return false;
+            }
             
             return true;
         } catch (err) {
@@ -101,7 +122,7 @@ async function checkUrl(slug) {
 }
 
 // ============================================================================
-// Process ONE company - the whole thing
+// Process ONE company
 // ============================================================================
 
 async function processOneCompany(name, existingSlugs) {
@@ -110,46 +131,53 @@ async function processOneCompany(name, existingSlugs) {
     console.log(`\n[${name}]`);
     console.log(`  Variants: ${variants.join(', ')}`);
     
-    // Try each variant
-    for (const slug of variants) {
-        // Already in DB?
-        if (existingSlugs.has(slug)) {
-            console.log(`  ${slug} → SKIP (already in DB)`);
-            return { status: 'skipped', slug, reason: 'exists' };
-        }
+    // Check each board in priority order
+    for (const board of BOARDS) {
+        console.log(`  Trying ${board.name}...`);
         
-        // Check URL
-        console.log(`  ${slug} → checking...`);
-        const works = await checkUrl(slug);
-        
-        if (works) {
-            console.log(`  ${slug} → FOUND ✓`);
-            
-            // Insert immediately
-            const { error } = await supabase.from('companies').insert({
-                name: name,
-                slug: slug,
-                url: `https://jobs.ashbyhq.com/${slug}`,
-                status: 'unvisited',
-                visited: false,
-                link_status: 'active',
-            });
-            
-            if (error) {
-                console.log(`  INSERT FAILED: ${error.message}`);
-                return { status: 'error', slug, reason: error.message };
+        // Try each variant on this board
+        for (const slug of variants) {
+            // Already in DB with this slug?
+            if (existingSlugs.has(slug)) {
+                console.log(`    ${slug} → SKIP (already in DB)`);
+                return { status: 'skipped', slug, source: null, reason: 'exists' };
             }
             
-            console.log(`  INSERTED ✓`);
-            existingSlugs.add(slug); // Track it
-            return { status: 'active', slug };
-        } else {
-            console.log(`  ${slug} → nope`);
+            const url = `${board.baseUrl}/${slug}`;
+            console.log(`    ${slug} → checking...`);
+            
+            const works = await checkUrl(url, board.isDead);
+            
+            if (works) {
+                console.log(`    ${slug} → FOUND ✓ (${board.name})`);
+                
+                // Insert immediately
+                const { error } = await supabase.from('companies').insert({
+                    name: name,
+                    slug: slug,
+                    url: url,
+                    source: board.name,
+                    status: 'unvisited',
+                    visited: false,
+                    link_status: 'active',
+                });
+                
+                if (error) {
+                    console.log(`    INSERT FAILED: ${error.message}`);
+                    return { status: 'error', slug, source: board.name, reason: error.message };
+                }
+                
+                console.log(`    INSERTED ✓`);
+                existingSlugs.add(slug);
+                return { status: 'active', slug, source: board.name };
+            } else {
+                console.log(`    ${slug} → nope`);
+            }
         }
     }
     
     console.log(`  NO WORKING URL ✗`);
-    return { status: 'dead', slug: variants[0] };
+    return { status: 'dead', slug: variants[0], source: null };
 }
 
 // ============================================================================
@@ -167,7 +195,6 @@ function parseCSV(filePath) {
         if (!name || name.length < 2) continue;
         if (/^company(\s*name)?$/i.test(name)) continue;
 
-        // Handle quoted values
         const quoted = name.match(/^"([^"]+)"/);
         if (quoted) {
             name = quoted[1];
@@ -215,6 +242,7 @@ async function main() {
 
     // Process each file
     const totals = { active: 0, dead: 0, skipped: 0, error: 0 };
+    const bySource = { ashby: 0, lever: 0, gem: 0 };
 
     for (const file of files) {
         console.log(`\n${'='.repeat(50)}`);
@@ -231,7 +259,10 @@ async function main() {
             const result = await processOneCompany(name, existingSlugs);
             totals[result.status]++;
             
-            // Small delay between companies
+            if (result.source) {
+                bySource[result.source]++;
+            }
+            
             await sleep(100);
         }
     }
@@ -241,6 +272,9 @@ async function main() {
     console.log('DONE');
     console.log('='.repeat(50));
     console.log(`  Active:  ${totals.active}`);
+    console.log(`    - Ashby: ${bySource.ashby}`);
+    console.log(`    - Lever: ${bySource.lever}`);
+    console.log(`    - Gem:   ${bySource.gem}`);
     console.log(`  Dead:    ${totals.dead}`);
     console.log(`  Skipped: ${totals.skipped}`);
     console.log(`  Errors:  ${totals.error}`);
