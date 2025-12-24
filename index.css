@@ -223,7 +223,7 @@ button:disabled { background: #333; cursor: not-allowed; }
 .grid a.applied-gem::after { content: ' ✓ GEM'; font-size: 10px; font-weight: 700; }
 
 .grid a.applied-greenhouse { background: #2a1a2a; border-color: #1a8d44; color: #3ca864; }
-.grid a.applied-greenhouse::after { content: ' ✓ GEM'; font-size: 10px; font-weight: 700; }
+.grid a.applied-greenhouse::after { content: ' ✓ GREENHOUSE'; font-size: 10px; font-weight: 700; }
 
 .grid a.skipped { background: #1a1a1a; border-color: #666; color: #888; opacity: 0.5; }
 .grid a.skipped::after { content: ' — SKIPPED'; font-size: 10px; font-weight: 700; }
