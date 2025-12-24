@@ -32,6 +32,12 @@ const BOARDS = [
         // Gem - assuming similar to Lever (need to verify)
         isDead: (body, status) => status === 404 || body.includes('Page not found') || body.includes('Not Found'),
     },
+    {
+        name: 'greenhouse',
+        baseUrl: 'https://job-boards.greenhouse.io',
+        // Greenhouse - assuming similar to Lever (need to verify)
+        isDead: (body, status) => status === 404 || body.includes('Page not found') || body.includes('Not Found'),
+    },
 ];
 
 // ============================================================================
@@ -125,33 +131,60 @@ async function checkUrl(url, isDead) {
 // Process ONE company
 // ============================================================================
 
-async function processOneCompany(name, existingSlugs) {
+async function processOneCompany(name, existingCompanies) {
     const variants = generateSlugVariants(name);
-    
+
     console.log(`\n[${name}]`);
     console.log(`  Variants: ${variants.join(', ')}`);
-    
+
     // Check each board in priority order
     for (const board of BOARDS) {
         console.log(`  Trying ${board.name}...`);
-        
+
         // Try each variant on this board
         for (const slug of variants) {
-            // Already in DB with this slug?
-            if (existingSlugs.has(slug)) {
-                console.log(`    ${slug} → SKIP (already in DB)`);
+            const existing = existingCompanies.get(slug);
+
+            // Already in DB with this slug and NOT dead? Skip it.
+            if (existing && existing.link_status !== 'dead') {
+                console.log(`    ${slug} → SKIP (already in DB, status: ${existing.link_status})`);
                 return { status: 'skipped', slug, source: null, reason: 'exists' };
             }
-            
+
             const url = `${board.baseUrl}/${slug}`;
             console.log(`    ${slug} → checking...`);
-            
+
             const works = await checkUrl(url, board.isDead);
-            
+
             if (works) {
                 console.log(`    ${slug} → FOUND ✓ (${board.name})`);
-                
-                // Insert immediately
+
+                // If existing record is dead, update it instead of inserting
+                if (existing && existing.link_status === 'dead') {
+                    console.log(`    Existing record is dead, updating...`);
+                    const { error } = await supabase.from('companies')
+                        .update({
+                            url: url,
+                            source: board.name,
+                            status: 'unvisited',
+                            visited: false,
+                            link_status: 'active',
+                        })
+                        .eq('slug', slug);
+
+                    if (error) {
+                        console.log(`    UPDATE FAILED: ${error.message}`);
+                        return { status: 'error', slug, source: board.name, reason: error.message };
+                    }
+
+                    console.log(`    UPDATED (was dead) ✓`);
+                    existing.link_status = 'active';
+                    existing.url = url;
+                    existing.source = board.name;
+                    return { status: 'updated', slug, source: board.name };
+                }
+
+                // Insert new record
                 const { error } = await supabase.from('companies').insert({
                     name: name,
                     slug: slug,
@@ -161,21 +194,55 @@ async function processOneCompany(name, existingSlugs) {
                     visited: false,
                     link_status: 'active',
                 });
-                
+
                 if (error) {
+                    // Handle duplicate key - check if existing record is dead and update it
+                    if (error.message.includes('duplicate key')) {
+                        console.log(`    Duplicate found, checking if dead...`);
+                        const { data: existingRow } = await supabase.from('companies')
+                            .select('link_status')
+                            .eq('slug', slug)
+                            .single();
+
+                        if (existingRow && existingRow.link_status === 'dead') {
+                            const { error: updateErr } = await supabase.from('companies')
+                                .update({
+                                    name: name,
+                                    url: url,
+                                    source: board.name,
+                                    status: 'unvisited',
+                                    visited: false,
+                                    link_status: 'active',
+                                })
+                                .eq('slug', slug);
+
+                            if (updateErr) {
+                                console.log(`    UPDATE FAILED: ${updateErr.message}`);
+                                return { status: 'error', slug, source: board.name, reason: updateErr.message };
+                            }
+
+                            console.log(`    UPDATED (was dead) ✓`);
+                            existingCompanies.set(slug, { link_status: 'active', url, source: board.name });
+                            return { status: 'updated', slug, source: board.name };
+                        } else {
+                            console.log(`    SKIP: duplicate exists with status: ${existingRow?.link_status}`);
+                            return { status: 'skipped', slug, source: null, reason: 'duplicate_not_dead' };
+                        }
+                    }
+
                     console.log(`    INSERT FAILED: ${error.message}`);
                     return { status: 'error', slug, source: board.name, reason: error.message };
                 }
-                
+
                 console.log(`    INSERTED ✓`);
-                existingSlugs.add(slug);
+                existingCompanies.set(slug, { link_status: 'active', url, source: board.name });
                 return { status: 'active', slug, source: board.name };
             } else {
                 console.log(`    ${slug} → nope`);
             }
         }
     }
-    
+
     console.log(`  NO WORKING URL ✗`);
     return { status: 'dead', slug: variants[0], source: null };
 }
@@ -212,15 +279,18 @@ function parseCSV(filePath) {
 async function main() {
     const CSV_DIR = './csv';
     
-    // Load existing slugs
+    // Load existing companies with their link_status
     console.log('Loading existing companies from DB...');
-    const { data: existing, error } = await supabase.from('companies').select('slug');
+    const { data: existing, error } = await supabase.from('companies').select('slug, link_status, url, source');
     if (error) {
         console.error('DB error:', error.message);
         process.exit(1);
     }
-    const existingSlugs = new Set(existing?.map(c => c.slug) || []);
-    console.log(`Found ${existingSlugs.size} existing companies\n`);
+    const existingCompanies = new Map();
+    for (const c of existing || []) {
+        existingCompanies.set(c.slug, { link_status: c.link_status, url: c.url, source: c.source });
+    }
+    console.log(`Found ${existingCompanies.size} existing companies\n`);
 
     // Get CSV files
     let files = process.argv.slice(2);
@@ -241,8 +311,8 @@ async function main() {
     }
 
     // Process each file
-    const totals = { active: 0, dead: 0, skipped: 0, error: 0 };
-    const bySource = { ashby: 0, lever: 0, gem: 0 };
+    const totals = { active: 0, updated: 0, dead: 0, skipped: 0, error: 0 };
+    const bySource = { ashby: 0, lever: 0, gem: 0, greenhouse: 0 };
 
     for (const file of files) {
         console.log(`\n${'='.repeat(50)}`);
@@ -256,7 +326,7 @@ async function main() {
             const name = names[i];
             console.log(`\n--- ${i + 1}/${names.length} ---`);
             
-            const result = await processOneCompany(name, existingSlugs);
+            const result = await processOneCompany(name, existingCompanies);
             totals[result.status]++;
             
             if (result.source) {
@@ -272,9 +342,11 @@ async function main() {
     console.log('DONE');
     console.log('='.repeat(50));
     console.log(`  Active:  ${totals.active}`);
-    console.log(`    - Ashby: ${bySource.ashby}`);
-    console.log(`    - Lever: ${bySource.lever}`);
-    console.log(`    - Gem:   ${bySource.gem}`);
+    console.log(`  Updated: ${totals.updated} (was dead, now active)`);
+    console.log(`    - Ashby:       ${bySource.ashby}`);
+    console.log(`    - Lever:       ${bySource.lever}`);
+    console.log(`    - Gem:         ${bySource.gem}`);
+    console.log(`    - Greenhouse:  ${bySource.greenhouse}`);
     console.log(`  Dead:    ${totals.dead}`);
     console.log(`  Skipped: ${totals.skipped}`);
     console.log(`  Errors:  ${totals.error}`);

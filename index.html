@@ -218,7 +218,7 @@
 
         const allStatuses = [
             'applied-ashby', 'applied-linkedin', 'applied-yc', 'applied-email', 'applied-website',
-            'applied-lever', 'applied-gem',
+            'applied-lever', 'applied-gem', 'applied-greenhouse',
             'interviewing', 'rejected', 'failed-interview', 'skipped', 'not-qualified', 'no-jobs', 'not-relevant', 'not-in-us'
         ];
 
@@ -229,21 +229,22 @@
         contextMenu.className = 'context-menu';
         contextMenu.style.display = 'none';
         contextMenu.innerHTML = `
-            <div data-status="applied-ashby"    >✓ Applied - Ashby</div>
-            <div data-status="applied-linkedin" >✓ Applied - LinkedIn</div>
-            <div data-status="applied-yc"       >✓ Applied - YC</div>
-            <div data-status="applied-email"    >✓ Applied - Email</div>
-            <div data-status="applied-website"  >✓ Applied - Website</div>
-            <div data-status="applied-lever"    >✓ Applied - Lever</div>
-            <div data-status="applied-gem"      >✓ Applied - Gem</div>
-            <div data-status="interviewing"     >Interviewing</div>
-            <div data-status="rejected"         >X Rejected</div>
-            <div data-status="failed-interview" >X Failed Interview</div>
-            <div data-status="skipped"          >— Skipped</div>
-            <div data-status="not-qualified"    >✗ Not Qualified</div>
-            <div data-status="no-jobs"          >— No Jobs</div>
-            <div data-status="not-relevant"     >— Not Relevant</div>
-            <div data-status="not-in-us"        >🌍 Not in US</div>
+            <div data-status="applied-ashby"     >✓ Applied - Ashby</div>
+            <div data-status="applied-linkedin"  >✓ Applied - LinkedIn</div>
+            <div data-status="applied-yc"        >✓ Applied - YC</div>
+            <div data-status="applied-email"     >✓ Applied - Email</div>
+            <div data-status="applied-website"   >✓ Applied - Website</div>
+            <div data-status="applied-lever"     >✓ Applied - Lever</div>
+            <div data-status="applied-gem"       >✓ Applied - Gem</div>
+            <div data-status="applied-greenhouse">✓ Applied - Greenhouse</div>
+            <div data-status="interviewing"      >Interviewing</div>
+            <div data-status="rejected"          >X Rejected</div>
+            <div data-status="failed-interview"  >X Failed Interview</div>
+            <div data-status="skipped"           >— Skipped</div>
+            <div data-status="not-qualified"     >✗ Not Qualified</div>
+            <div data-status="no-jobs"           >— No Jobs</div>
+            <div data-status="not-relevant"      >— Not Relevant</div>
+            <div data-status="not-in-us"         >🌍 Not in US</div>
             <div class="clear-status" data-status="clear">Clear Status</div>
             <div data-action="note" style="border-top: 1px solid #444; margin-top: 6px; padding-top: 12px;">Add Note</div>
             <div class="close-menu" data-status="close">✕ Close</div>
@@ -918,62 +919,129 @@
             const formatDate = (date) => date ? date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'N/A';
 
             // Build the prompt
-            let prompt = `I'm Anthony Guzzardo, a full-stack software engineer and founder of Mr. Fox, LLC based in Chicago. I graduated from DePaul University with a CS degree in 2023. I've shipped a live iOS app called Rangley (40 active users on the App Store) and I'm currently building a $36,000 marketplace platform (MyDailyDeals) for a client. My stack includes Swift, TypeScript, Python, C#, PostgreSQL, and Vapor. I have professional experience at EL3 Tech LLC (financial pipelines, crypto analysis) and Treevah LLC (CI/CD, security). I'm actively job searching and willing to relocate to San Francisco or internationally.
+            let prompt = `# Job Search Analysis Request
 
-**My Job Search Stats (as of ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}):**
+            ## About Me
+            I'm Anthony, a full-stack engineer with ~2 years experience, currently running EL3 Tech (consulting). I built Rangley, an iOS social app for finding tennis partners, solo in about two months from backend to App Store (40 active users). Currently building Mr. Fox, a React Native marketplace with Stripe Connect. My stack: TypeScript, React, React Native, Node.js, PostgreSQL, Swift, Python, AWS.
 
-- Job search started: ${formatDate(startDate)}${weeksSince > 0 ? ` (${weeksSince} week${weeksSince !== 1 ? 's' : ''} ago)` : ''}
-- Total applications: ${applied.length}
-- Responses received: ${responseCount} (${responseRate}% response rate)
-- Ghosted (no response after 14 days): ${ghosted.length}
-- Rejected at initial screen: ${rejected.length}
-- Made it to interview stage: ${interviewing.length + failedInterview.length}
-- Rejected after interview: ${failedInterview.length}
-- Currently interviewing: ${interviewing.length}
-- Skipped by me (not interested): ${skipped.length}
+            **Target:** Founding engineer roles at early-stage startups (YC preferred), small teams, high ownership. Relocating from Chicago to SF (NYC acceptable).
 
-**Application Velocity:**
+            **Avoiding:** Senior-level positions, infra/DevOps-heavy roles, FDE positions, security clearance required.
 
-- Applications per week: ${appsPerWeek}
-- Most recent application: ${formatDate(endDate)}
+            ---
 
-**Application Method Breakdown:**
+            ## Raw Data Export (${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })})
 
-- Applied via Ashby: ${byMethod.ashby}
-- Applied via LinkedIn: ${byMethod.linkedin}
-- Applied via YC: ${byMethod.yc}
-- Applied via Email: ${byMethod.email}
-- Applied via Company Website: ${byMethod.website}
-- Applied via Lever: ${byMethod.lever}
-- Applied via Gem: ${byMethod.gem}
-`;
+            ### Timeline
+            - Search started: ${formatDate(startDate)}
+            - Days active: ${daysSinceStart}
+            - Most recent app: ${formatDate(endDate)}
 
-            // Add notes/feedback section if there are any
-            if (companiesWithNotes.length > 0) {
-                prompt += `\n**Feedback/Notes Received:**\n\n`;
-                companiesWithNotes.forEach(c => {
-                    const statusLabel = c.status ? c.status.replace(/-/g, ' ').replace(/applied /i, 'Applied - ') : 'Unknown';
-                    prompt += `- ${c.name} (${statusLabel}): "${c.notes}"\n`;
+            ### Application Volume
+            | Metric | Value |
+            |--------|-------|
+            | Total applications | ${applied.length} |
+            | Apps/day average | ${appsPerDay} |
+            | Apps/week average | ${appsPerWeek} |
+            | Last 7 days | ${recentApps.length} |
+
+            ### Funnel Metrics
+            | Stage | Count | Rate |
+            |-------|-------|------|
+            | Applied | ${applied.length} | 100% |
+            | Any response | ${totalResponses} | ${responseRate}% |
+            | Got interview | ${interviewing.length + failedInterview.length} | ${interviewConversionRate}% |
+            | Passed interview | ${interviewing.length} | ${interviewPassRate}% of interviews |
+            | Failed interview | ${failedInterview.length} | ${formatPct(failedInterview.length, interviewing.length + failedInterview.length)} of interviews |
+            | Rejected (no interview) | ${rejected.length} | ${formatPct(rejected.length, applied.length)} |
+            | Ghosted (14+ days) | ${ghosted.length} | ${formatPct(ghosted.length, applied.length)} |
+            | Still pending | ${pending.length} | ${formatPct(pending.length, applied.length)} |
+
+            ### Application Method Breakdown
+            | Method | Count | % of Total |
+            |--------|-------|------------|
+            ${Object.entries(methodStats).map(([key, val]) => 
+            `| ${val.label} | ${val.applied.length} | ${formatPct(val.applied.length, applied.length)} |`
+            ).join('\n')}
+
+            ### Self-Filtered (I passed on these)
+            | Reason | Count |
+            |--------|-------|
+            | Skipped (not interested) | ${skipped.length} |
+            | Not qualified | ${notQualified.length} |
+            | No jobs posted | ${noJobs.length} |
+            | Not relevant | ${notRelevant.length} |
+            | Not in US | ${notInUS.length} |
+            | **Total filtered** | ${skipped.length + notQualified.length + noJobs.length + notRelevant.length + notInUS.length} |
+
+            ### Activity by Day of Week
+            ${dayNames.map((day, i) => `- ${day}: ${byDayOfWeek[i]} apps`).join('\n')}
+            - Most active: ${dayNames[maxDayIdx]} (${byDayOfWeek[maxDayIdx]})
+            - Least active: ${dayNames[minDayIdx]} (${byDayOfWeek[minDayIdx]})
+            `;
+
+            // Add rejection feedback
+            if (rejectionNotes.length > 0) {
+                prompt += `\n### Rejection Feedback Received\n`;
+                rejectionNotes.forEach(c => {
+                    const stage = c.status === 'failed-interview' ? 'post-interview' : 'initial screen';
+                    prompt += `- **${c.name}** (${stage}): "${c.notes}"\n`;
                 });
             }
 
-            // Add the instructions for the LLM
-            prompt += `
-**Based on this data, I need you to:**
+            // Add interview notes
+            if (interviewNotes.length > 0) {
+                prompt += `\n### Active Interview Notes\n`;
+                interviewNotes.forEach(c => {
+                    prompt += `- **${c.name}**: "${c.notes}"\n`;
+                });
+            }
 
-A. **Motivation:** Give me genuine encouragement to keep going. Not generic bullshit — specific to my situation. Acknowledge that this is hard and that my stats aren't a reflection of my ability to ship real products.
+            // Add other notes
+            if (otherNotes.length > 0) {
+                prompt += `\n### Other Notes\n`;
+                otherNotes.forEach(c => {
+                    const statusLabel = c.status ? c.status.replace(/-/g, ' ') : 'unknown';
+                    prompt += `- **${c.name}** (${statusLabel}): "${c.notes}"\n`;
+                });
+            }
 
-B. **Pivot Analysis:** Should I be targeting different types of companies? Different role types? Different geographies? Am I wasting time on certain application methods? Be specific.
+            // Calculated insights section
+            prompt += `\n---
 
-C. **Improvement Areas:** What should I actively work on? Is it my resume? My interview skills? My portfolio? The way I'm applying? The volume of applications? Tell me what to fix.
+            ## Pre-Calculated Insights
 
-D. **Pattern Recognition:** Look at my stats and tell me anything interesting. Maybe I do better with certain application methods. Maybe my response rate is actually decent but I'm dying at interviews. Find the signal in the noise.
+            ### Conversion Analysis
+            - **Top of funnel → Response:** ${responseRate}% (${totalResponses}/${applied.length})
+            - **Response → Interview:** ${totalResponses > 0 ? formatPct(interviewing.length + failedInterview.length, totalResponses) : 'N/A'} (${interviewing.length + failedInterview.length}/${totalResponses})
+            - **Interview → Advancing:** ${interviewPassRate}% (${interviewing.length}/${interviewing.length + failedInterview.length})
 
-E. **General Advice:** Anything else. Networking strategies, ways to stand out, whether I should cold-email founders, whether my client work and shipped app are being positioned correctly — whatever you think would help.
+            ### Red Flags to Investigate
+            ${ghosted.length > applied.length * 0.5 ? `- ⚠️ High ghost rate (${formatPct(ghosted.length, applied.length)}) - may indicate resume/application issues\n` : ''}${rejected.length > totalResponses * 0.7 ? `- ⚠️ Most responses are rejections without interviews - profile may not match target roles\n` : ''}${failedInterview.length > interviewing.length ? `- ⚠️ Failing more interviews than passing - interview prep needed\n` : ''}${recentApps.length < 5 ? `- ⚠️ Low recent activity (${recentApps.length} apps in last 7 days) - velocity dropping\n` : ''}${applied.length > 50 && totalResponses < 5 ? `- ⚠️ Very low response rate despite volume - fundamental positioning issue likely\n` : ''}${Object.values(methodStats).filter(m => m.applied.length > 0).length === 1 ? `- ⚠️ Only using one application channel - diversify\n` : ''}
 
-Be honest. Be specific. Reference my actual numbers. Don't sugarcoat it but don't be a dick either.`;
+            ### Potential Bright Spots
+            ${responseRate > 10 ? `- ✓ Response rate above 10% is decent for cold applications\n` : ''}${interviewing.length > 0 ? `- ✓ Active interviews in pipeline (${interviewing.length})\n` : ''}${interviewPassRate > 50 ? `- ✓ Passing most interviews - keep doing what you're doing there\n` : ''}${appsPerWeek > 20 ? `- ✓ Good application velocity (${appsPerWeek}/week)\n` : ''}
 
-            return prompt;
+            ---
+
+            ## What I Need From You
+
+            Analyze this data and give me:
+
+            1. **Diagnosis:** Where is my funnel breaking? Be specific about which stage and why you think that's happening.
+
+            2. **Method Analysis:** Which application channels seem to be working/not working? Should I double down or diversify?
+
+            3. **Velocity Check:** Am I applying enough? Too much (spray and pray)? What's the right balance?
+
+            4. **Pattern Recognition:** Any patterns in the rejection feedback or timing that I should know about?
+
+            5. **Next 7 Days:** Give me 3 specific, actionable things to do this week. Not generic advice - specific to my numbers.
+
+            6. **Honest Assessment:** Given my profile (2 years exp, shipped iOS app, consulting background, targeting founding engineer at early-stage startups in SF), are my expectations realistic? What should I adjust?
+
+            Be direct. Reference my actual numbers. Skip the motivational fluff unless you have something specific to say.`;
+                        return prompt;
         }
 
         async function copyToClipboard(text) {
