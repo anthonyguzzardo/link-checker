@@ -773,6 +773,7 @@
                 'applied-website': 'Applied - Website',
                 'applied-lever': 'Applied - Lever',
                 'applied-gem': 'Applied - Gem',
+                'applied-greenhouse': 'Applied - Greenhouse',
                 'interviewing': 'Interviewing',
                 'rejected': 'Rejected',
                 'failed-interview': 'Failed Interview',
@@ -895,13 +896,14 @@
 
             // Breakdown by application method
             const byMethod = {
-                ashby: applied.filter(c => c.status === 'applied-ashby').length,
-                linkedin: applied.filter(c => c.status === 'applied-linkedin').length,
-                yc: applied.filter(c => c.status === 'applied-yc').length,
-                email: applied.filter(c => c.status === 'applied-email').length,
-                website: applied.filter(c => c.status === 'applied-website').length,
-                lever: applied.filter(c => c.status === 'applied-lever').length,
-                gem: applied.filter(c => c.status === 'applied-gem').length,
+                ashby       : applied.filter(c => c.status === 'applied-ashby').length,
+                linkedin    : applied.filter(c => c.status === 'applied-linkedin').length,
+                yc          : applied.filter(c => c.status === 'applied-yc').length,
+                email       : applied.filter(c => c.status === 'applied-email').length,
+                website     : applied.filter(c => c.status === 'applied-website').length,
+                lever       : applied.filter(c => c.status === 'applied-lever').length,
+                gem         : applied.filter(c => c.status === 'applied-gem').length,
+                greenhouse  : applied.filter(c => c.status === 'applied-greenhouse').length,
             };
 
             // Calculate ghosted (applied > 14 days ago, still in applied-* status)
