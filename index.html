@@ -268,19 +268,34 @@
 
         async function loadCompanies() {
             setSyncStatus('Loading...', 'syncing');
-            const { data, error } = await db
-                .from('companies')
-                .select('*')
-                .eq('link_status', 'active')  // Only show validated active links
-                .order('name');
 
-            if (error) {
-                console.error('Load error:', error);
-                setSyncStatus('Load failed', 'error');
-                return [];
+            // Supabase defaults to 1000 rows, need to paginate to get all
+            let allData = [];
+            let from = 0;
+            const pageSize = 1000;
+
+            while (true) {
+                const { data, error } = await db
+                    .from('companies')
+                    .select('*')
+                    .eq('link_status', 'active')
+                    .order('name')
+                    .range(from, from + pageSize - 1);
+
+                if (error) {
+                    console.error('Load error:', error);
+                    setSyncStatus('Load failed', 'error');
+                    return [];
+                }
+
+                allData = allData.concat(data);
+
+                if (data.length < pageSize) break; // Last page
+                from += pageSize;
             }
+
             setSyncStatus('Loaded', 'success');
-            return data;
+            return allData;
         }
 
         async function saveStatus(slug, status, visited = true) {
