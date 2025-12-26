@@ -886,6 +886,10 @@
         function generateLLMPrompt() {
             const now = Date.now();
             const ghostedThreshold = 14 * 24 * 60 * 60 * 1000; // 14 days
+            const sevenDaysAgo = now - (7 * 24 * 60 * 60 * 1000);
+
+            // Helper function to format percentages
+            const formatPct = (num, denom) => denom > 0 ? Math.round((num / denom) * 100) + '%' : '0%';
 
             // Calculate all stats
             const applied = companyData.filter(c => c.status?.startsWith('applied-'));
@@ -893,17 +897,21 @@
             const rejected = companyData.filter(c => c.status === 'rejected');
             const failedInterview = companyData.filter(c => c.status === 'failed-interview');
             const skipped = companyData.filter(c => c.status === 'skipped');
+            const notQualified = companyData.filter(c => c.status === 'not-qualified');
+            const noJobs = companyData.filter(c => c.status === 'no-jobs');
+            const notRelevant = companyData.filter(c => c.status === 'not-relevant');
+            const notInUS = companyData.filter(c => c.status === 'not-in-us');
 
-            // Breakdown by application method
-            const byMethod = {
-                ashby       : applied.filter(c => c.status === 'applied-ashby').length,
-                linkedin    : applied.filter(c => c.status === 'applied-linkedin').length,
-                yc          : applied.filter(c => c.status === 'applied-yc').length,
-                email       : applied.filter(c => c.status === 'applied-email').length,
-                website     : applied.filter(c => c.status === 'applied-website').length,
-                lever       : applied.filter(c => c.status === 'applied-lever').length,
-                gem         : applied.filter(c => c.status === 'applied-gem').length,
-                greenhouse  : applied.filter(c => c.status === 'applied-greenhouse').length,
+            // Method stats with labels
+            const methodStats = {
+                ashby: { label: 'Ashby', applied: applied.filter(c => c.status === 'applied-ashby') },
+                linkedin: { label: 'LinkedIn', applied: applied.filter(c => c.status === 'applied-linkedin') },
+                yc: { label: 'YC', applied: applied.filter(c => c.status === 'applied-yc') },
+                email: { label: 'Email', applied: applied.filter(c => c.status === 'applied-email') },
+                website: { label: 'Website', applied: applied.filter(c => c.status === 'applied-website') },
+                lever: { label: 'Lever', applied: applied.filter(c => c.status === 'applied-lever') },
+                gem: { label: 'Gem', applied: applied.filter(c => c.status === 'applied-gem') },
+                greenhouse: { label: 'Greenhouse', applied: applied.filter(c => c.status === 'applied-greenhouse') },
             };
 
             // Calculate ghosted (applied > 14 days ago, still in applied-* status)
@@ -914,9 +922,26 @@
                 return daysSince > ghostedThreshold;
             });
 
-            // Response stats (skipped doesn't count - that's you passing on them)
-            const responseCount = interviewing.length + rejected.length + failedInterview.length;
-            const responseRate = applied.length > 0 ? Math.round((responseCount / applied.length) * 100) : 0;
+            // Pending = applied but not ghosted yet (less than 14 days, no response)
+            const pending = applied.filter(c => {
+                if (!c.applied_at) return true; // No date = pending
+                const appliedTime = new Date(c.applied_at).getTime();
+                return (now - appliedTime) <= ghostedThreshold;
+            });
+
+            // Recent apps (last 7 days)
+            const recentApps = applied.filter(c => {
+                if (!c.applied_at) return false;
+                return new Date(c.applied_at).getTime() > sevenDaysAgo;
+            });
+
+            // Response stats
+            const totalResponses = interviewing.length + rejected.length + failedInterview.length;
+            const responseRate = applied.length > 0 ? Math.round((totalResponses / applied.length) * 100) : 0;
+            const interviewConversionRate = applied.length > 0 ? Math.round(((interviewing.length + failedInterview.length) / applied.length) * 100) : 0;
+            const interviewPassRate = (interviewing.length + failedInterview.length) > 0
+                ? Math.round((interviewing.length / (interviewing.length + failedInterview.length)) * 100)
+                : 0;
 
             // Date range
             const appliedDates = applied
@@ -926,11 +951,36 @@
 
             const startDate = appliedDates[0];
             const endDate = appliedDates[appliedDates.length - 1];
+            const daysSinceStart = startDate ? Math.ceil((now - startDate.getTime()) / (24 * 60 * 60 * 1000)) : 0;
             const weeksSince = startDate ? Math.ceil((now - startDate.getTime()) / (7 * 24 * 60 * 60 * 1000)) : 0;
+            const appsPerDay = daysSinceStart > 0 ? (applied.length / daysSinceStart).toFixed(1) : applied.length;
             const appsPerWeek = weeksSince > 0 ? Math.round(applied.length / weeksSince) : applied.length;
 
-            // Collect notes/feedback
-            const companiesWithNotes = companyData.filter(c => c.notes && c.notes.trim());
+            // Activity by day of week
+            const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+            const byDayOfWeek = [0, 0, 0, 0, 0, 0, 0];
+            applied.forEach(c => {
+                if (c.applied_at) {
+                    const day = new Date(c.applied_at).getDay();
+                    byDayOfWeek[day]++;
+                }
+            });
+            const maxDayIdx = byDayOfWeek.indexOf(Math.max(...byDayOfWeek));
+            const minDayIdx = byDayOfWeek.indexOf(Math.min(...byDayOfWeek));
+
+            // Notes categorization
+            const rejectionNotes = companyData.filter(c =>
+                (c.status === 'rejected' || c.status === 'failed-interview') && c.notes?.trim()
+            );
+            const interviewNotes = companyData.filter(c =>
+                c.status === 'interviewing' && c.notes?.trim()
+            );
+            const otherNotes = companyData.filter(c =>
+                c.notes?.trim() &&
+                c.status !== 'rejected' &&
+                c.status !== 'failed-interview' &&
+                c.status !== 'interviewing'
+            );
 
             // Format date helper
             const formatDate = (date) => date ? date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'N/A';
@@ -938,64 +988,64 @@
             // Build the prompt
             let prompt = `# Job Search Analysis Request
 
-            ## About Me
-            I'm Anthony, a full-stack engineer with ~2 years experience, currently running EL3 Tech (consulting). I built Rangley, an iOS social app for finding tennis partners, solo in about two months from backend to App Store (40 active users). Currently building Mr. Fox, a React Native marketplace with Stripe Connect. My stack: TypeScript, React, React Native, Node.js, PostgreSQL, Swift, Python, AWS.
+## About Me
+I'm Anthony, a full-stack engineer with ~2 years experience, currently running EL3 Tech (consulting). I built Rangley, an iOS social app for finding tennis partners, solo in about two months from backend to App Store (40 active users). Currently building Mr. Fox, a React Native marketplace with Stripe Connect. My stack: TypeScript, React, React Native, Node.js, PostgreSQL, Swift, Python, AWS.
 
-            **Target:** Founding engineer roles at early-stage startups (YC preferred), small teams, high ownership. Relocating from Chicago to SF (NYC acceptable).
+**Target:** Founding engineer roles at early-stage startups (YC preferred), small teams, high ownership. Relocating from Chicago to SF (NYC acceptable).
 
-            **Avoiding:** Senior-level positions, infra/DevOps-heavy roles, FDE positions, security clearance required.
+**Avoiding:** Senior-level positions, infra/DevOps-heavy roles, FDE positions, security clearance required.
 
-            ---
+---
 
-            ## Raw Data Export (${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })})
+## Raw Data Export (${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })})
 
-            ### Timeline
-            - Search started: ${formatDate(startDate)}
-            - Days active: ${daysSinceStart}
-            - Most recent app: ${formatDate(endDate)}
+### Timeline
+- Search started: ${formatDate(startDate)}
+- Days active: ${daysSinceStart}
+- Most recent app: ${formatDate(endDate)}
 
-            ### Application Volume
-            | Metric | Value |
-            |--------|-------|
-            | Total applications | ${applied.length} |
-            | Apps/day average | ${appsPerDay} |
-            | Apps/week average | ${appsPerWeek} |
-            | Last 7 days | ${recentApps.length} |
+### Application Volume
+| Metric | Value |
+|--------|-------|
+| Total applications | ${applied.length} |
+| Apps/day average | ${appsPerDay} |
+| Apps/week average | ${appsPerWeek} |
+| Last 7 days | ${recentApps.length} |
 
-            ### Funnel Metrics
-            | Stage | Count | Rate |
-            |-------|-------|------|
-            | Applied | ${applied.length} | 100% |
-            | Any response | ${totalResponses} | ${responseRate}% |
-            | Got interview | ${interviewing.length + failedInterview.length} | ${interviewConversionRate}% |
-            | Passed interview | ${interviewing.length} | ${interviewPassRate}% of interviews |
-            | Failed interview | ${failedInterview.length} | ${formatPct(failedInterview.length, interviewing.length + failedInterview.length)} of interviews |
-            | Rejected (no interview) | ${rejected.length} | ${formatPct(rejected.length, applied.length)} |
-            | Ghosted (14+ days) | ${ghosted.length} | ${formatPct(ghosted.length, applied.length)} |
-            | Still pending | ${pending.length} | ${formatPct(pending.length, applied.length)} |
+### Funnel Metrics
+| Stage | Count | Rate |
+|-------|-------|------|
+| Applied | ${applied.length} | 100% |
+| Any response | ${totalResponses} | ${responseRate}% |
+| Got interview | ${interviewing.length + failedInterview.length} | ${interviewConversionRate}% |
+| Passed interview | ${interviewing.length} | ${interviewPassRate}% of interviews |
+| Failed interview | ${failedInterview.length} | ${formatPct(failedInterview.length, interviewing.length + failedInterview.length)} of interviews |
+| Rejected (no interview) | ${rejected.length} | ${formatPct(rejected.length, applied.length)} |
+| Ghosted (14+ days) | ${ghosted.length} | ${formatPct(ghosted.length, applied.length)} |
+| Still pending | ${pending.length} | ${formatPct(pending.length, applied.length)} |
 
-            ### Application Method Breakdown
-            | Method | Count | % of Total |
-            |--------|-------|------------|
-            ${Object.entries(methodStats).map(([key, val]) => 
-            `| ${val.label} | ${val.applied.length} | ${formatPct(val.applied.length, applied.length)} |`
-            ).join('\n')}
+### Application Method Breakdown
+| Method | Count | % of Total |
+|--------|-------|------------|
+${Object.entries(methodStats).map(([key, val]) =>
+`| ${val.label} | ${val.applied.length} | ${formatPct(val.applied.length, applied.length)} |`
+).join('\n')}
 
-            ### Self-Filtered (I passed on these)
-            | Reason | Count |
-            |--------|-------|
-            | Skipped (not interested) | ${skipped.length} |
-            | Not qualified | ${notQualified.length} |
-            | No jobs posted | ${noJobs.length} |
-            | Not relevant | ${notRelevant.length} |
-            | Not in US | ${notInUS.length} |
-            | **Total filtered** | ${skipped.length + notQualified.length + noJobs.length + notRelevant.length + notInUS.length} |
+### Self-Filtered (I passed on these)
+| Reason | Count |
+|--------|-------|
+| Skipped (not interested) | ${skipped.length} |
+| Not qualified | ${notQualified.length} |
+| No jobs posted | ${noJobs.length} |
+| Not relevant | ${notRelevant.length} |
+| Not in US | ${notInUS.length} |
+| **Total filtered** | ${skipped.length + notQualified.length + noJobs.length + notRelevant.length + notInUS.length} |
 
-            ### Activity by Day of Week
-            ${dayNames.map((day, i) => `- ${day}: ${byDayOfWeek[i]} apps`).join('\n')}
-            - Most active: ${dayNames[maxDayIdx]} (${byDayOfWeek[maxDayIdx]})
-            - Least active: ${dayNames[minDayIdx]} (${byDayOfWeek[minDayIdx]})
-            `;
+### Activity by Day of Week
+${dayNames.map((day, i) => `- ${day}: ${byDayOfWeek[i]} apps`).join('\n')}
+- Most active: ${dayNames[maxDayIdx]} (${byDayOfWeek[maxDayIdx]})
+- Least active: ${dayNames[minDayIdx]} (${byDayOfWeek[minDayIdx]})
+`;
 
             // Add rejection feedback
             if (rejectionNotes.length > 0) {
@@ -1024,41 +1074,43 @@
             }
 
             // Calculated insights section
-            prompt += `\n---
+            prompt += `
+---
 
-            ## Pre-Calculated Insights
+## Pre-Calculated Insights
 
-            ### Conversion Analysis
-            - **Top of funnel → Response:** ${responseRate}% (${totalResponses}/${applied.length})
-            - **Response → Interview:** ${totalResponses > 0 ? formatPct(interviewing.length + failedInterview.length, totalResponses) : 'N/A'} (${interviewing.length + failedInterview.length}/${totalResponses})
-            - **Interview → Advancing:** ${interviewPassRate}% (${interviewing.length}/${interviewing.length + failedInterview.length})
+### Conversion Analysis
+- **Top of funnel → Response:** ${responseRate}% (${totalResponses}/${applied.length})
+- **Response → Interview:** ${totalResponses > 0 ? formatPct(interviewing.length + failedInterview.length, totalResponses) : 'N/A'} (${interviewing.length + failedInterview.length}/${totalResponses})
+- **Interview → Advancing:** ${interviewPassRate}% (${interviewing.length}/${interviewing.length + failedInterview.length})
 
-            ### Red Flags to Investigate
-            ${ghosted.length > applied.length * 0.5 ? `- ⚠️ High ghost rate (${formatPct(ghosted.length, applied.length)}) - may indicate resume/application issues\n` : ''}${rejected.length > totalResponses * 0.7 ? `- ⚠️ Most responses are rejections without interviews - profile may not match target roles\n` : ''}${failedInterview.length > interviewing.length ? `- ⚠️ Failing more interviews than passing - interview prep needed\n` : ''}${recentApps.length < 5 ? `- ⚠️ Low recent activity (${recentApps.length} apps in last 7 days) - velocity dropping\n` : ''}${applied.length > 50 && totalResponses < 5 ? `- ⚠️ Very low response rate despite volume - fundamental positioning issue likely\n` : ''}${Object.values(methodStats).filter(m => m.applied.length > 0).length === 1 ? `- ⚠️ Only using one application channel - diversify\n` : ''}
+### Red Flags to Investigate
+${ghosted.length > applied.length * 0.5 ? `- High ghost rate (${formatPct(ghosted.length, applied.length)}) - may indicate resume/application issues\n` : ''}${rejected.length > totalResponses * 0.7 ? `- Most responses are rejections without interviews - profile may not match target roles\n` : ''}${failedInterview.length > interviewing.length ? `- Failing more interviews than passing - interview prep needed\n` : ''}${recentApps.length < 5 ? `- Low recent activity (${recentApps.length} apps in last 7 days) - velocity dropping\n` : ''}${applied.length > 50 && totalResponses < 5 ? `- Very low response rate despite volume - fundamental positioning issue likely\n` : ''}${Object.values(methodStats).filter(m => m.applied.length > 0).length === 1 ? `- Only using one application channel - diversify\n` : ''}
 
-            ### Potential Bright Spots
-            ${responseRate > 10 ? `- ✓ Response rate above 10% is decent for cold applications\n` : ''}${interviewing.length > 0 ? `- ✓ Active interviews in pipeline (${interviewing.length})\n` : ''}${interviewPassRate > 50 ? `- ✓ Passing most interviews - keep doing what you're doing there\n` : ''}${appsPerWeek > 20 ? `- ✓ Good application velocity (${appsPerWeek}/week)\n` : ''}
+### Potential Bright Spots
+${responseRate > 10 ? `- Response rate above 10% is decent for cold applications\n` : ''}${interviewing.length > 0 ? `- Active interviews in pipeline (${interviewing.length})\n` : ''}${interviewPassRate > 50 ? `- Passing most interviews - keep doing what you're doing there\n` : ''}${appsPerWeek > 20 ? `- Good application velocity (${appsPerWeek}/week)\n` : ''}
 
-            ---
+---
 
-            ## What I Need From You
+## What I Need From You
 
-            Analyze this data and give me:
+Analyze this data and give me:
 
-            1. **Diagnosis:** Where is my funnel breaking? Be specific about which stage and why you think that's happening.
+1. **Diagnosis:** Where is my funnel breaking? Be specific about which stage and why you think that's happening.
 
-            2. **Method Analysis:** Which application channels seem to be working/not working? Should I double down or diversify?
+2. **Method Analysis:** Which application channels seem to be working/not working? Should I double down or diversify?
 
-            3. **Velocity Check:** Am I applying enough? Too much (spray and pray)? What's the right balance?
+3. **Velocity Check:** Am I applying enough? Too much (spray and pray)? What's the right balance?
 
-            4. **Pattern Recognition:** Any patterns in the rejection feedback or timing that I should know about?
+4. **Pattern Recognition:** Any patterns in the rejection feedback or timing that I should know about?
 
-            5. **Next 7 Days:** Give me 3 specific, actionable things to do this week. Not generic advice - specific to my numbers.
+5. **Next 7 Days:** Give me 3 specific, actionable things to do this week. Not generic advice - specific to my numbers.
 
-            6. **Honest Assessment:** Given my profile (2 years exp, shipped iOS app, consulting background, targeting founding engineer at early-stage startups in SF), are my expectations realistic? What should I adjust?
+6. **Honest Assessment:** Given my profile (2 years exp, shipped iOS app, consulting background, targeting founding engineer at early-stage startups in SF), are my expectations realistic? What should I adjust?
 
-            Be direct. Reference my actual numbers. Skip the motivational fluff unless you have something specific to say.`;
-                        return prompt;
+Be direct. Reference my actual numbers. Skip the motivational fluff unless you have something specific to say.`;
+
+            return prompt;
         }
 
         async function copyToClipboard(text) {

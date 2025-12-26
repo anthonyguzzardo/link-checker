@@ -45,16 +45,28 @@ const BOARDS = [
 // ============================================================================
 
 function generateSlugVariants(name) {
+    const variants = new Set();
+
+    // 0. URL-encoded space variant (preserves original casing)
+    // Some boards (e.g., Ashby) use percent-encoded spaces like "Citizen%20Health"
+    const spacedName = name
+        .replace(/\b(inc|llc|ltd|corp|company|co)\b\.?/gi, '')
+        .trim()
+        .replace(/\s+/g, ' '); // normalize multiple spaces to single
+
+    if (spacedName.includes(' ')) {
+        variants.add(encodeURIComponent(spacedName));
+    }
+
+    // Standard normalization for remaining variants
     const base = name
         .toLowerCase()
         .replace(/\b(inc|llc|ltd|corp|company|co)\b\.?/g, '')
         .replace(/[^a-z0-9.-]/g, '')
         .replace(/^[.-]+|[.-]+$/g, '');
 
-    if (!base) return [];
+    if (!base) return [...variants];
 
-    const variants = new Set();
-    
     // 1. Base as-is
     variants.add(base);
     
@@ -131,60 +143,33 @@ async function checkUrl(url, isDead) {
 // Process ONE company
 // ============================================================================
 
-async function processOneCompany(name, existingCompanies) {
+async function processOneCompany(name, existingSlugs) {
     const variants = generateSlugVariants(name);
-
+    
     console.log(`\n[${name}]`);
     console.log(`  Variants: ${variants.join(', ')}`);
-
+    
     // Check each board in priority order
     for (const board of BOARDS) {
         console.log(`  Trying ${board.name}...`);
-
+        
         // Try each variant on this board
         for (const slug of variants) {
-            const existing = existingCompanies.get(slug);
-
-            // Already in DB with this slug and NOT dead? Skip it.
-            if (existing && existing.link_status !== 'dead') {
-                console.log(`    ${slug} → SKIP (already in DB, status: ${existing.link_status})`);
+            // Already in DB with this slug?
+            if (existingSlugs.has(slug)) {
+                console.log(`    ${slug} → SKIP (already in DB)`);
                 return { status: 'skipped', slug, source: null, reason: 'exists' };
             }
-
+            
             const url = `${board.baseUrl}/${slug}`;
             console.log(`    ${slug} → checking...`);
-
+            
             const works = await checkUrl(url, board.isDead);
-
+            
             if (works) {
                 console.log(`    ${slug} → FOUND ✓ (${board.name})`);
-
-                // If existing record is dead, update it instead of inserting
-                if (existing && existing.link_status === 'dead') {
-                    console.log(`    Existing record is dead, updating...`);
-                    const { error } = await supabase.from('companies')
-                        .update({
-                            url: url,
-                            source: board.name,
-                            status: 'unvisited',
-                            visited: false,
-                            link_status: 'active',
-                        })
-                        .eq('slug', slug);
-
-                    if (error) {
-                        console.log(`    UPDATE FAILED: ${error.message}`);
-                        return { status: 'error', slug, source: board.name, reason: error.message };
-                    }
-
-                    console.log(`    UPDATED (was dead) ✓`);
-                    existing.link_status = 'active';
-                    existing.url = url;
-                    existing.source = board.name;
-                    return { status: 'updated', slug, source: board.name };
-                }
-
-                // Insert new record
+                
+                // Insert immediately
                 const { error } = await supabase.from('companies').insert({
                     name: name,
                     slug: slug,
@@ -194,55 +179,21 @@ async function processOneCompany(name, existingCompanies) {
                     visited: false,
                     link_status: 'active',
                 });
-
+                
                 if (error) {
-                    // Handle duplicate key - check if existing record is dead and update it
-                    if (error.message.includes('duplicate key')) {
-                        console.log(`    Duplicate found, checking if dead...`);
-                        const { data: existingRow } = await supabase.from('companies')
-                            .select('link_status')
-                            .eq('slug', slug)
-                            .single();
-
-                        if (existingRow && existingRow.link_status === 'dead') {
-                            const { error: updateErr } = await supabase.from('companies')
-                                .update({
-                                    name: name,
-                                    url: url,
-                                    source: board.name,
-                                    status: 'unvisited',
-                                    visited: false,
-                                    link_status: 'active',
-                                })
-                                .eq('slug', slug);
-
-                            if (updateErr) {
-                                console.log(`    UPDATE FAILED: ${updateErr.message}`);
-                                return { status: 'error', slug, source: board.name, reason: updateErr.message };
-                            }
-
-                            console.log(`    UPDATED (was dead) ✓`);
-                            existingCompanies.set(slug, { link_status: 'active', url, source: board.name });
-                            return { status: 'updated', slug, source: board.name };
-                        } else {
-                            console.log(`    SKIP: duplicate exists with status: ${existingRow?.link_status}`);
-                            return { status: 'skipped', slug, source: null, reason: 'duplicate_not_dead' };
-                        }
-                    }
-
                     console.log(`    INSERT FAILED: ${error.message}`);
                     return { status: 'error', slug, source: board.name, reason: error.message };
                 }
-
+                
                 console.log(`    INSERTED ✓`);
-                existingCompanies.set(slug, { link_status: 'active', url, source: board.name });
+                existingSlugs.add(slug);
                 return { status: 'active', slug, source: board.name };
             } else {
                 console.log(`    ${slug} → nope`);
             }
         }
     }
-
+    
     console.log(`  NO WORKING URL ✗`);
     return { status: 'dead', slug: variants[0], source: null };
 }
@@ -279,18 +230,15 @@ function parseCSV(filePath) {
 async function main() {
     const CSV_DIR = './csv';
     
-    // Load existing companies with their link_status
+    // Load existing slugs
     console.log('Loading existing companies from DB...');
-    const { data: existing, error } = await supabase.from('companies').select('slug, link_status, url, source');
+    const { data: existing, error } = await supabase.from('companies').select('slug');
     if (error) {
         console.error('DB error:', error.message);
         process.exit(1);
     }
-    const existingCompanies = new Map();
-    for (const c of existing || []) {
-        existingCompanies.set(c.slug, { link_status: c.link_status, url: c.url, source: c.source });
-    }
-    console.log(`Found ${existingCompanies.size} existing companies\n`);
+    const existingSlugs = new Set(existing?.map(c => c.slug) || []);
+    console.log(`Found ${existingSlugs.size} existing companies\n`);
 
     // Get CSV files
     let files = process.argv.slice(2);
@@ -311,8 +259,8 @@ async function main() {
     }
 
     // Process each file
-    const totals = { active: 0, updated: 0, dead: 0, skipped: 0, error: 0 };
-    const bySource = { ashby: 0, lever: 0, gem: 0, greenhouse: 0 };
+    const totals = { active: 0, dead: 0, skipped: 0, error: 0 };
+    const bySource = { ashby: 0, lever: 0, gem: 0, greenhouse : 0};
 
     for (const file of files) {
         console.log(`\n${'='.repeat(50)}`);
@@ -326,7 +274,7 @@ async function main() {
             const name = names[i];
             console.log(`\n--- ${i + 1}/${names.length} ---`);
             
-            const result = await processOneCompany(name, existingCompanies);
+            const result = await processOneCompany(name, existingSlugs);
             totals[result.status]++;
             
             if (result.source) {
@@ -342,7 +290,6 @@ async function main() {
     console.log('DONE');
     console.log('='.repeat(50));
     console.log(`  Active:  ${totals.active}`);
-    console.log(`  Updated: ${totals.updated} (was dead, now active)`);
     console.log(`    - Ashby:       ${bySource.ashby}`);
     console.log(`    - Lever:       ${bySource.lever}`);
     console.log(`    - Gem:         ${bySource.gem}`);
