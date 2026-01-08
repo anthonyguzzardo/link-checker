@@ -632,8 +632,16 @@
                     e.preventDefault();
                     currentContextLink = this;
                     contextMenu.style.display = 'block';
-                    const x = Math.min(e.clientX, window.innerWidth - contextMenu.offsetWidth - 10);
-                    const y = Math.min(e.clientY, window.innerHeight - contextMenu.offsetHeight - 10);
+                    const menuHeight = contextMenu.offsetHeight;
+                    const menuWidth = contextMenu.offsetWidth;
+                    const x = Math.min(e.clientX, window.innerWidth - menuWidth - 10);
+                    // Ensure menu doesn't go off top (min 10px) or bottom of screen
+                    let y = e.clientY;
+                    if (y + menuHeight > window.innerHeight - 10) {
+                        // Would go off bottom, position above click point
+                        y = Math.max(10, e.clientY - menuHeight);
+                    }
+                    y = Math.max(10, y); // Never go above 10px from top
                     contextMenu.style.left = x + 'px';
                     contextMenu.style.top = y + 'px';
                 });

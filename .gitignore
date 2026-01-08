@@ -34,6 +34,9 @@ SUPABASE.md
 /deprecated
 /csv
 /catchAll
+/applicationQuestions
+/forDan
+/LinkedInStrategy
 
 ashby-scraper.js
 
